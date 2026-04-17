@@ -1,0 +1,152 @@
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Archivo+Black&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: #050505;
+  color: #ffffff;
+  font-family: "Archivo", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+input,
+select,
+button {
+  font-family: inherit;
+}
+
+/* === TANTRA BRAND UTILITIES === */
+
+/* Solid red — primary brand */
+.btn-red {
+  background: #DB130D;
+  color: #ffffff;
+  font-family: "Archivo", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+  border: 1px solid #DB130D;
+}
+
+.btn-red:hover {
+  background: #FF1F17;
+  border-color: #FF1F17;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(219, 19, 13, 0.35);
+}
+
+.btn-red:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Outline red button */
+.btn-outline {
+  background: transparent;
+  color: #ffffff;
+  font-family: "Archivo", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+  border: 1px solid #2a1010;
+}
+
+.btn-outline:hover {
+  border-color: #DB130D;
+  color: #DB130D;
+}
+
+/* Ghost red — tab inactive state */
+.btn-ghost {
+  background: transparent;
+  color: #6b6b6b;
+  font-family: "Archivo", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+}
+
+.btn-ghost:hover {
+  color: #ffffff;
+}
+
+/* Text effects */
+.display-text {
+  font-family: "Archivo Black", "Archivo", sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.red-text {
+  color: #DB130D;
+}
+
+.red-glow-text {
+  color: #ffffff;
+  text-shadow: 0 0 20px rgba(219, 19, 13, 0.6), 0 0 40px rgba(219, 19, 13, 0.3);
+}
+
+/* Red-tinted border */
+.tantra-border {
+  border: 1px solid #2a1010;
+}
+
+.tantra-border-strong {
+  border: 1px solid #3d1414;
+}
+
+/* Label styling — small uppercase wide-tracked */
+.label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #6b6b6b;
+  font-weight: 600;
+}
+
+/* Background noise/texture overlay */
+.grain::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  z-index: 1;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' /%3E%3C/svg%3E");
+}
+
+/* Red accent line */
+.accent-line {
+  height: 2px;
+  width: 40px;
+  background: #DB130D;
+  display: inline-block;
+}
+
+/* Input styling */
+.tantra-input {
+  background: #0E0E0E;
+  border: 1px solid #2a1010;
+  color: #ffffff;
+  font-family: "Archivo", sans-serif;
+  transition: all 0.15s ease;
+}
+
+.tantra-input:focus {
+  outline: none;
+  border-color: #DB130D;
+  box-shadow: 0 0 0 3px rgba(219, 19, 13, 0.1);
+}
+
+.tantra-input::placeholder {
+  color: #4a4a4a;
+}
