@@ -13,6 +13,7 @@ type Registration = {
   group_size: number;
   event_name: string;
   notes: string | null;
+  table_number: string | null;
   issued_by: string | null;
   email_sent: boolean;
   email_sent_at: string | null;
@@ -40,6 +41,7 @@ export default function AdminPage() {
   const [email, setEmail] = useState("");
   const [groupSize, setGroupSize] = useState(1);
   const [notes, setNotes] = useState("");
+  const [tableNumber, setTableNumber] = useState("");
   const [issuedBy, setIssuedBy] = useState("");
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueError, setIssueError] = useState("");
@@ -49,6 +51,7 @@ export default function AdminPage() {
     guestCount: number;
     ticketCode: string;
     notes: string | null;
+    tableNumber: string | null;
     emailSent: boolean;
     emailError: string | null;
   } | null>(null);
@@ -162,6 +165,7 @@ export default function AdminPage() {
           email: email.trim().toLowerCase(),
           group_size: groupSize,
           notes: notes.trim() || null,
+          table_number: tableNumber.trim() || null,
           issued_by: issuedBy.trim() || null,
         }),
       });
@@ -179,6 +183,7 @@ export default function AdminPage() {
         guestCount: data.guest_count,
         ticketCode: data.ticket_code,
         notes: data.notes,
+        tableNumber: data.table_number,
         emailSent: data.email_sent,
         emailError: data.email_error,
       });
@@ -188,6 +193,7 @@ export default function AdminPage() {
       setEmail("");
       setGroupSize(1);
       setNotes("");
+      setTableNumber("");
 
       refreshList();
     } catch (err: any) {
@@ -204,6 +210,7 @@ export default function AdminPage() {
       r.full_name.toLowerCase().includes(s) ||
       r.phone.includes(s) ||
       r.email.toLowerCase().includes(s) ||
+      (r.table_number || "").toLowerCase().includes(s) ||
       r.tickets.some((t) => t.ticket_code.toLowerCase().includes(s))
     );
   });
@@ -214,11 +221,9 @@ export default function AdminPage() {
     0
   );
 
-  // ============== LOGIN SCREEN ==============
   if (!authed) {
     return (
       <main className="min-h-screen flex items-center justify-center px-4 grain relative bg-tantra-bg">
-        {/* Red glow background accent */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-tantra-red opacity-[0.08] blur-[120px] rounded-full" />
         </div>
@@ -227,7 +232,6 @@ export default function AdminPage() {
           onSubmit={handleLogin}
           className="w-full max-w-sm bg-tantra-card tantra-border-strong rounded-none p-10 relative z-10"
         >
-          {/* Logo */}
           <div className="flex justify-center mb-8">
             <img src={LOGO_URL} alt="Tantra" className="h-20 w-auto object-contain" />
           </div>
@@ -269,15 +273,12 @@ export default function AdminPage() {
     );
   }
 
-  // ============== MAIN DASHBOARD ==============
   return (
     <main className="min-h-screen grain relative bg-tantra-bg">
-      {/* Top red accent bar */}
       <div className="h-1 bg-tantra-red w-full" />
 
       <div className="relative z-10 px-4 py-6 sm:py-8">
         <div className="max-w-5xl mx-auto">
-          {/* Header with logo */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-tantra-border">
             <div className="flex items-center gap-4">
               <img src={LOGO_URL} alt="Tantra" className="h-12 w-auto object-contain" />
@@ -291,7 +292,6 @@ export default function AdminPage() {
             </button>
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-8 mb-8 border-b border-tantra-border">
             <button
               onClick={() => setTab("issue")}
@@ -318,7 +318,6 @@ export default function AdminPage() {
             </button>
           </div>
 
-          {/* ===== ISSUE TAB ===== */}
           {tab === "issue" && (
             <div className="max-w-xl">
               {issueSuccess ? (
@@ -349,6 +348,12 @@ export default function AdminPage() {
                     <span className="mx-2 text-tantra-red">·</span>
                     {issueSuccess.guestCount}{" "}
                     {issueSuccess.guestCount === 1 ? "guest" : "guests"}
+                    {issueSuccess.tableNumber && (
+                      <>
+                        <span className="mx-2 text-tantra-red">·</span>
+                        Table {issueSuccess.tableNumber}
+                      </>
+                    )}
                   </p>
 
                   <div className="bg-tantra-black border border-tantra-red p-6 mb-5 text-center relative">
@@ -361,6 +366,15 @@ export default function AdminPage() {
                     <div className="font-mono text-white text-3xl font-black tracking-wider">
                       {issueSuccess.ticketCode}
                     </div>
+
+                    {issueSuccess.tableNumber && (
+                      <div className="mt-5 pt-5 border-t border-tantra-border">
+                        <div className="label mb-2">TABLE</div>
+                        <div className="display-text text-tantra-red text-2xl">
+                          {issueSuccess.tableNumber.toUpperCase()}
+                        </div>
+                      </div>
+                    )}
 
                     {issueSuccess.notes && (
                       <div className="mt-5 pt-5 border-t border-tantra-border">
@@ -407,7 +421,6 @@ export default function AdminPage() {
                     </h2>
                     <p className="text-sm text-tantra-muted">
                       Enter client details — they receive one ticket by email.
-                      Hostess verifies at the door.
                     </p>
                   </div>
 
@@ -474,14 +487,27 @@ export default function AdminPage() {
 
                   <div>
                     <label className="label block mb-2">
-                      NOTES <span className="normal-case tracking-normal text-tantra-muted/80">(tables, birthdays, VIP)</span>
+                      TABLE <span className="normal-case tracking-normal text-tantra-muted/80">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={tableNumber}
+                      onChange={(e) => setTableNumber(e.target.value)}
+                      className="tantra-input w-full px-4 py-3.5"
+                      placeholder="e.g. 12, VIP-3, Booth A"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label block mb-2">
+                      NOTES <span className="normal-case tracking-normal text-tantra-muted/80">(birthdays, special requests)</span>
                     </label>
                     <input
                       type="text"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       className="tantra-input w-full px-4 py-3.5"
-                      placeholder="e.g. 1 VIP table, birthday, promoter"
+                      placeholder="e.g. Birthday celebration, bottle service"
                     />
                   </div>
 
@@ -516,7 +542,6 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* ===== LIST TAB ===== */}
           {tab === "list" && (
             <div>
               <div className="grid grid-cols-3 gap-3 sm:gap-5 mb-6">
@@ -530,7 +555,7 @@ export default function AdminPage() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name, email, phone, ticket code..."
+                  placeholder="Search name, email, phone, ticket, table..."
                   className="tantra-input flex-1 min-w-[200px] px-4 py-3"
                 />
                 <button
@@ -553,6 +578,7 @@ export default function AdminPage() {
                         <th className="px-4 py-4 label text-tantra-mutedLight">Client</th>
                         <th className="px-4 py-4 label text-tantra-mutedLight">Contact</th>
                         <th className="px-4 py-4 label text-tantra-mutedLight">Party</th>
+                        <th className="px-4 py-4 label text-tantra-mutedLight">Table</th>
                         <th className="px-4 py-4 label text-tantra-mutedLight">Ticket</th>
                         <th className="px-4 py-4 label text-tantra-mutedLight">Email</th>
                         <th className="px-4 py-4 label text-tantra-mutedLight">When</th>
@@ -562,7 +588,7 @@ export default function AdminPage() {
                       {filtered.length === 0 && (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="px-4 py-12 text-center text-tantra-muted"
                           >
                             {registrations.length === 0
@@ -605,6 +631,15 @@ export default function AdminPage() {
                               <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">
                                 {r.group_size}
                               </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              {r.table_number ? (
+                                <span className="inline-block bg-tantra-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">
+                                  {r.table_number}
+                                </span>
+                              ) : (
+                                <span className="text-tantra-muted text-xs">—</span>
+                              )}
                             </td>
                             <td className="px-4 py-3.5">
                               {ticket ? (
@@ -668,9 +703,7 @@ function StatCard({
         {label}
       </div>
       <div className="display-text text-4xl sm:text-5xl leading-none">{value}</div>
-      {!accent && (
-        <div className="absolute top-0 right-0 w-1 h-full bg-tantra-red" />
-      )}
+      {!accent && <div className="absolute top-0 right-0 w-1 h-full bg-tantra-red" />}
     </div>
   );
 }

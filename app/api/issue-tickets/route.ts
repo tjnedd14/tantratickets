@@ -21,7 +21,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { full_name, phone, email, group_size, notes, issued_by } = body;
+    const {
+      full_name,
+      phone,
+      email,
+      group_size,
+      notes,
+      issued_by,
+      table_number,
+    } = body;
 
     if (!full_name || typeof full_name !== "string" || full_name.trim().length < 2) {
       return NextResponse.json({ error: "Invalid client name" }, { status: 400 });
@@ -44,6 +52,7 @@ export async function POST(req: NextRequest) {
     const cleanName = full_name.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanNotes = notes?.trim() || null;
+    const cleanTable = table_number?.trim() || null;
     const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Tantra";
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
 
@@ -53,7 +62,6 @@ export async function POST(req: NextRequest) {
       null;
     const ua = req.headers.get("user-agent") || null;
 
-    // 1. Insert registration
     const { data: registration, error: regErr } = await supabase
       .from("registrations")
       .insert({
@@ -62,6 +70,7 @@ export async function POST(req: NextRequest) {
         email: cleanEmail,
         group_size,
         notes: cleanNotes,
+        table_number: cleanTable,
         issued_by: issued_by?.trim() || null,
         event_name: eventName,
         ip_address: ip,
@@ -78,7 +87,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Create ONE ticket for the whole group
     const ticketCode = generateTicketCode();
     const { data: insertedTicket, error: tickErr } = await supabase
       .from("tickets")
@@ -98,17 +106,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create ticket" }, { status: 500 });
     }
 
-    // 3. Build PDF
     const pdfBuffer = buildTicketPDF({
       ticketCode,
       clientName: cleanName,
       guestCount: group_size,
       notes: cleanNotes,
+      tableNumber: cleanTable,
       eventName,
       venueName,
     });
 
-    // 4. Email the client
     let emailSent = false;
     let emailError: string | null = null;
     try {
@@ -120,6 +127,7 @@ export async function POST(req: NextRequest) {
         guestCount: group_size,
         ticketCode,
         notes: cleanNotes,
+        tableNumber: cleanTable,
         pdfBuffer,
       });
       emailSent = true;
@@ -141,6 +149,7 @@ export async function POST(req: NextRequest) {
       guest_count: group_size,
       ticket_code: ticketCode,
       notes: cleanNotes,
+      table_number: cleanTable,
       email_sent: emailSent,
       email_error: emailError,
     });

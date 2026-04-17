@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
       group_size,
       event_name,
       notes,
+      table_number,
       issued_by,
       email_sent,
       email_sent_at,
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
   if (format === "csv") {
     const rows: string[] = [];
     rows.push(
-      "Issued At,Client,Email,Phone,Guest Count,Ticket Code,Ticket Number,Checked In,Checked In At,Notes,Issued By,Email Sent"
+      "Issued At,Client,Email,Phone,Guest Count,Table,Ticket Code,Ticket Number,Checked In,Checked In At,Notes,Issued By,Email Sent"
     );
 
     for (const r of data || []) {
@@ -64,6 +65,7 @@ export async function GET(req: NextRequest) {
             csv(r.email),
             csv(r.phone),
             r.group_size,
+            csv(r.table_number || ""),
             t.ticket_code,
             t.person_number,
             t.checked_in ? "YES" : "NO",
