@@ -4,12 +4,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* === THEME VARIABLES === */
+:root {
+  /* Light mode (default) */
+  --bg: #f5f5f5;
+  --bg-card: #ffffff;
+  --bg-surface: #fafafa;
+  --bg-deep: #ffffff;
+  --border: #e5e5e5;
+  --border-strong: #dddddd;
+  --text: #0a0a0a;
+  --text-muted: #6b6b6b;
+  --text-subtle: #999999;
+  --input-bg: #fafafa;
+}
+
+.dark {
+  --bg: #050505;
+  --bg-card: #0E0E0E;
+  --bg-surface: #161616;
+  --bg-deep: #000000;
+  --border: #2a1010;
+  --border-strong: #3d1414;
+  --text: #ffffff;
+  --text-muted: #a0a0a0;
+  --text-subtle: #6b6b6b;
+  --input-bg: #0E0E0E;
+}
+
 html,
 body {
-  background: #050505;
-  color: #ffffff;
+  background: var(--bg);
+  color: var(--text);
   font-family: "Archivo", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 input,
@@ -18,9 +47,8 @@ button {
   font-family: inherit;
 }
 
-/* === TANTRA BRAND UTILITIES === */
+/* === BUTTONS === */
 
-/* Solid red — primary brand */
 .btn-red {
   background: #DB130D;
   color: #ffffff;
@@ -46,16 +74,15 @@ button {
   box-shadow: none;
 }
 
-/* Outline red button */
 .btn-outline {
   background: transparent;
-  color: #ffffff;
+  color: var(--text);
   font-family: "Archivo", sans-serif;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   transition: all 0.15s ease;
-  border: 1px solid #2a1010;
+  border: 1px solid var(--border-strong);
 }
 
 .btn-outline:hover {
@@ -63,22 +90,23 @@ button {
   color: #DB130D;
 }
 
-/* Ghost red — tab inactive state */
-.btn-ghost {
+.btn-icon {
   background: transparent;
-  color: #6b6b6b;
-  font-family: "Archivo", sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.btn-ghost:hover {
-  color: #ffffff;
+.btn-icon:hover {
+  border-color: #DB130D;
+  color: #DB130D;
 }
 
-/* Text effects */
+/* === TEXT === */
+
 .display-text {
   font-family: "Archivo Black", "Archivo", sans-serif;
   font-weight: 900;
@@ -90,41 +118,64 @@ button {
   color: #DB130D;
 }
 
-.red-glow-text {
-  color: #ffffff;
-  text-shadow: 0 0 20px rgba(219, 19, 13, 0.6), 0 0 40px rgba(219, 19, 13, 0.3);
+/* === BACKGROUND HELPERS === */
+
+.bg-app {
+  background: var(--bg);
+}
+.bg-card {
+  background: var(--bg-card);
+}
+.bg-surface {
+  background: var(--bg-surface);
+}
+.bg-deep {
+  background: var(--bg-deep);
 }
 
-/* Red-tinted border */
+.text-default {
+  color: var(--text);
+}
+.text-muted {
+  color: var(--text-muted);
+}
+.text-subtle {
+  color: var(--text-subtle);
+}
+
+/* Borders */
 .tantra-border {
-  border: 1px solid #2a1010;
+  border: 1px solid var(--border);
 }
-
 .tantra-border-strong {
-  border: 1px solid #3d1414;
+  border: 1px solid var(--border-strong);
 }
 
-/* Label styling — small uppercase wide-tracked */
+/* === LABELS === */
 .label {
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #6b6b6b;
-  font-weight: 600;
+  color: var(--text-subtle);
+  font-weight: 700;
 }
 
-/* Background noise/texture overlay */
+/* === GRAIN OVERLAY (dark mode only) === */
 .grain::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.04;
+  opacity: 0;
   z-index: 1;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' /%3E%3C/svg%3E");
 }
 
-/* Red accent line */
+.dark .grain::before {
+  opacity: 0.04;
+}
+
+/* === ACCENT LINE === */
 .accent-line {
   height: 2px;
   width: 40px;
@@ -132,11 +183,11 @@ button {
   display: inline-block;
 }
 
-/* Input styling */
+/* === INPUTS === */
 .tantra-input {
-  background: #0E0E0E;
-  border: 1px solid #2a1010;
-  color: #ffffff;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
   font-family: "Archivo", sans-serif;
   transition: all 0.15s ease;
 }
@@ -148,5 +199,18 @@ button {
 }
 
 .tantra-input::placeholder {
-  color: #4a4a4a;
+  color: var(--text-subtle);
+  opacity: 0.7;
 }
+
+/* For datetime-local input — make calendar icon visible in dark mode */
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) opacity(0.6);
+  cursor: pointer;
+}
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+/* Logo: invert in light mode if it's a white-on-transparent logo, leave alone in dark */
+/* (handled per-component since we have separate URLs) */

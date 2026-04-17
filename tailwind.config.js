@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx}",
     "./components/**/*.{js,ts,jsx,tsx}",
@@ -8,22 +9,12 @@ module.exports = {
     extend: {
       colors: {
         tantra: {
-          red: "#DB130D",        // primary brand red
+          red: "#DB130D",
           redDark: "#9E0D09",
           redGlow: "#FF1F17",
-          black: "#000000",
-          bg: "#050505",         // slightly off-true-black for contrast
-          card: "#0E0E0E",
-          surface: "#161616",
-          border: "#2a1010",     // dark red-tinged border
-          borderStrong: "#3d1414",
-          muted: "#6b6b6b",
-          mutedLight: "#a0a0a0",
-          white: "#ffffff",
         },
       },
       fontFamily: {
-        // Radley is the display serif; Archivo is the body sans — both on Google Fonts
         display: ['"Archivo Black"', '"Archivo"', "sans-serif"],
         body: ['"Archivo"', "system-ui", "sans-serif"],
       },

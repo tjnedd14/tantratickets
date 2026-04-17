@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { formatEventDate, formatEventDateCompact, formatEventTime } from "./utils";
 
 type Params = {
   ticketCode: string;
@@ -6,6 +7,7 @@ type Params = {
   guestCount: number;
   notes: string | null;
   tableNumber: string | null;
+  eventDatetime: string | null;
   eventName: string;
   venueName: string;
 };
@@ -16,6 +18,7 @@ export function buildTicketPDF({
   guestCount,
   notes,
   tableNumber,
+  eventDatetime,
   eventName,
   venueName,
 }: Params): Buffer {
@@ -57,42 +60,59 @@ export function buildTicketPDF({
 
   doc.setTextColor(0, 0, 0);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(28);
-  doc.text(eventName.toUpperCase(), 10, 31);
+  doc.setFontSize(26);
+  doc.text(eventName.toUpperCase(), 10, 30);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(80, 80, 80);
-  doc.text(venueName, 10, 37);
+  doc.text(venueName, 10, 36);
+
+  // Date/time on top right of main
+  if (eventDatetime) {
+    doc.setTextColor(...RED);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.text("EVENT DATE", stubX - 8, 17, { align: "right" });
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(formatEventDateCompact(eventDatetime), stubX - 8, 25, { align: "right" });
+
+    doc.setTextColor(80, 80, 80);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(formatEventTime(eventDatetime), stubX - 8, 31, { align: "right" });
+  }
 
   doc.setFillColor(...RED);
-  doc.rect(10, 40, 25, 1, "F");
+  doc.rect(10, 39, 25, 1, "F");
 
-  // Reservation for + party size in left half
+  // Reservation for + party size
   doc.setTextColor(140, 140, 140);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text("RESERVATION FOR", 10, 48);
+  doc.text("RESERVATION FOR", 10, 47);
 
   doc.setTextColor(0, 0, 0);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text(clientName.toUpperCase(), 10, 55, { maxWidth: 70 });
+  doc.text(clientName.toUpperCase(), 10, 54, { maxWidth: 70 });
 
   doc.setTextColor(140, 140, 140);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text("PARTY SIZE", 10, 63);
+  doc.text("PARTY SIZE", 10, 62);
 
   doc.setTextColor(...RED);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text(`${guestCount} ${guestCount === 1 ? "GUEST" : "GUESTS"}`, 10, 71);
+  doc.text(`${guestCount} ${guestCount === 1 ? "GUEST" : "GUESTS"}`, 10, 70);
 
-  // Table info on the right side of main section (if exists)
+  // Table on the right side of main
   if (tableNumber) {
     const tableX = 90;
-    // Vertical separator line
     doc.setDrawColor(220, 220, 220);
     doc.setLineWidth(0.2);
     doc.line(tableX - 4, 44, tableX - 4, pageH - 8);
@@ -100,35 +120,34 @@ export function buildTicketPDF({
     doc.setTextColor(...RED);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    doc.text("TABLE", tableX, 48);
+    doc.text("TABLE", tableX, 47);
 
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text(tableNumber.toUpperCase(), tableX, 60, { maxWidth: stubX - tableX - 4 });
+    doc.setFontSize(20);
+    doc.text(tableNumber.toUpperCase(), tableX, 59, { maxWidth: stubX - tableX - 4 });
 
     if (notes && notes.trim()) {
       doc.setTextColor(140, 140, 140);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(6);
-      doc.text("NOTES", tableX, 67);
+      doc.text("NOTES", tableX, 66);
       doc.setTextColor(80, 80, 80);
       doc.setFont("helvetica", "italic");
       doc.setFontSize(7);
       const notesText = notes.length > 40 ? notes.substring(0, 38) + "…" : notes;
-      doc.text(notesText, tableX, 71, { maxWidth: stubX - tableX - 4 });
+      doc.text(notesText, tableX, 70, { maxWidth: stubX - tableX - 4 });
     }
   } else if (notes && notes.trim()) {
-    // No table — show notes below party size, full width
     doc.setTextColor(140, 140, 140);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6);
-    doc.text("NOTES", 75, 63);
+    doc.text("NOTES", 75, 62);
     doc.setTextColor(80, 80, 80);
     doc.setFont("helvetica", "italic");
     doc.setFontSize(8);
     const notesText = notes.length > 50 ? notes.substring(0, 48) + "…" : notes;
-    doc.text(notesText, 75, 70, { maxWidth: stubX - 80 });
+    doc.text(notesText, 75, 69, { maxWidth: stubX - 80 });
   }
 
   // ===== STUB SECTION =====
@@ -142,38 +161,46 @@ export function buildTicketPDF({
 
   doc.setTextColor(...RED);
   doc.setFont("courier", "bold");
-  doc.setFontSize(12);
-  doc.text(ticketCode, stubCenterX, 24, { align: "center" });
+  doc.setFontSize(11);
+  doc.text(ticketCode, stubCenterX, 23, { align: "center" });
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.2);
-  doc.line(stubX + 6, 29, pageW - 8, 29);
+  doc.line(stubX + 6, 27, pageW - 8, 27);
 
   doc.setTextColor(140, 140, 140);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6);
-  doc.text("ADMITS", stubCenterX, 38, { align: "center" });
+  doc.text("ADMITS", stubCenterX, 35, { align: "center" });
 
   doc.setTextColor(...RED);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(38);
-  doc.text(`${guestCount}`, stubCenterX, 58, { align: "center" });
+  doc.setFontSize(34);
+  doc.text(`${guestCount}`, stubCenterX, 53, { align: "center" });
 
   doc.setTextColor(140, 140, 140);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6);
-  doc.text(guestCount === 1 ? "GUEST" : "GUESTS", stubCenterX, 64, { align: "center" });
+  doc.text(guestCount === 1 ? "GUEST" : "GUESTS", stubCenterX, 59, { align: "center" });
 
-  // Table on stub if exists, otherwise event name
+  // Table or event name at bottom of stub
   if (tableNumber) {
     doc.setTextColor(140, 140, 140);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6);
-    doc.text("TABLE", stubCenterX, 70, { align: "center" });
+    doc.text("TABLE", stubCenterX, 65, { align: "center" });
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
-    doc.text(tableNumber.toUpperCase(), stubCenterX, pageH - 9, { align: "center" });
+    doc.text(tableNumber.toUpperCase(), stubCenterX, 70, { align: "center" });
+  }
+
+  // Date at very bottom of stub
+  if (eventDatetime) {
+    doc.setTextColor(...RED);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(formatEventDateCompact(eventDatetime), stubCenterX, pageH - 9, { align: "center" });
   } else {
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");

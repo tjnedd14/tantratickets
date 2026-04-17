@@ -1,9 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { isValidEmail, isValidPhone, normalizePhone } from "@/lib/utils";
+import {
+  isValidEmail,
+  isValidPhone,
+  normalizePhone,
+  formatEventDate,
+  getDefaultEventDatetime,
+} from "@/lib/utils";
+import { useTheme } from "@/lib/theme";
 
-const LOGO_URL = "https://i.imgur.com/tEFCuKr.png";
+// Logos: dark mode uses original (red on dark), light mode uses inverted/dark version
+// User mentioned wanting a white logo — placeholder for now uses a CSS filter swap.
+// If user provides a white logo URL, swap LOGO_DARK below.
+const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png"; // shown in dark mode (logo IS the brand red on dark)
+const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png"; // shown in light mode (red on white works fine)
 
 type Registration = {
   id: string;
@@ -12,6 +23,7 @@ type Registration = {
   email: string;
   group_size: number;
   event_name: string;
+  event_datetime: string | null;
   notes: string | null;
   table_number: string | null;
   issued_by: string | null;
@@ -29,6 +41,8 @@ type Registration = {
 type Tab = "issue" | "list";
 
 export default function AdminPage() {
+  const { theme, toggle: toggleTheme, mounted: themeMounted } = useTheme();
+
   const [password, setPassword] = useState("");
   const [authed, setAuthed] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -43,6 +57,7 @@ export default function AdminPage() {
   const [notes, setNotes] = useState("");
   const [tableNumber, setTableNumber] = useState("");
   const [issuedBy, setIssuedBy] = useState("");
+  const [eventDatetime, setEventDatetime] = useState("");
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueError, setIssueError] = useState("");
   const [issueSuccess, setIssueSuccess] = useState<{
@@ -52,6 +67,7 @@ export default function AdminPage() {
     ticketCode: string;
     notes: string | null;
     tableNumber: string | null;
+    eventDatetime: string | null;
     emailSent: boolean;
     emailError: string | null;
   } | null>(null);
@@ -59,6 +75,11 @@ export default function AdminPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
+
+  // Initialize default datetime
+  useEffect(() => {
+    if (!eventDatetime) setEventDatetime(getDefaultEventDatetime());
+  }, []);
 
   useEffect(() => {
     const saved =
@@ -166,6 +187,7 @@ export default function AdminPage() {
           group_size: groupSize,
           notes: notes.trim() || null,
           table_number: tableNumber.trim() || null,
+          event_datetime: eventDatetime || null,
           issued_by: issuedBy.trim() || null,
         }),
       });
@@ -184,6 +206,7 @@ export default function AdminPage() {
         ticketCode: data.ticket_code,
         notes: data.notes,
         tableNumber: data.table_number,
+        eventDatetime: data.event_datetime,
         emailSent: data.email_sent,
         emailError: data.email_error,
       });
@@ -194,6 +217,7 @@ export default function AdminPage() {
       setGroupSize(1);
       setNotes("");
       setTableNumber("");
+      // Keep eventDatetime — same date for the night
 
       refreshList();
     } catch (err: any) {
@@ -221,28 +245,58 @@ export default function AdminPage() {
     0
   );
 
+  // Show light logo in light mode, original in dark mode
+  const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
+
+  // Theme toggle component
+  const ThemeToggle = () => (
+    <button
+      onClick={toggleTheme}
+      aria-label="Toggle theme"
+      className="btn-icon w-10 h-10"
+      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+    >
+      {!themeMounted ? null : theme === "dark" ? (
+        // Sun icon
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10l1.4 1.4M3 12h2m14 0h2M5.6 18.4l1.4-1.4m10-10l1.4-1.4" />
+          <circle cx="12" cy="12" r="4" />
+        </svg>
+      ) : (
+        // Moon icon
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+        </svg>
+      )}
+    </button>
+  );
+
   if (!authed) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-4 grain relative bg-tantra-bg">
+      <main className="min-h-screen flex items-center justify-center px-4 grain relative bg-app">
+        <div className="absolute top-4 right-4 z-20">
+          <ThemeToggle />
+        </div>
+
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-tantra-red opacity-[0.08] blur-[120px] rounded-full" />
         </div>
 
         <form
           onSubmit={handleLogin}
-          className="w-full max-w-sm bg-tantra-card tantra-border-strong rounded-none p-10 relative z-10"
+          className="w-full max-w-sm bg-card tantra-border-strong rounded-none p-10 relative z-10"
         >
           <div className="flex justify-center mb-8">
-            <img src={LOGO_URL} alt="Tantra" className="h-20 w-auto object-contain" />
+            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" />
           </div>
 
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="accent-line"></span>
-            <span className="label text-tantra-mutedLight">STAFF ACCESS</span>
+            <span className="label">STAFF ACCESS</span>
             <span className="accent-line"></span>
           </div>
 
-          <p className="text-tantra-muted text-sm text-center mb-7">
+          <p className="text-muted text-sm text-center mb-7">
             Enter password to continue
           </p>
 
@@ -256,7 +310,7 @@ export default function AdminPage() {
           />
 
           {authError && (
-            <div className="bg-tantra-red/10 border border-tantra-red text-red-200 text-sm px-4 py-3 mb-4">
+            <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3 mb-4">
               {authError}
             </div>
           )}
@@ -274,29 +328,32 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen grain relative bg-tantra-bg">
+    <main className="min-h-screen grain relative bg-app">
       <div className="h-1 bg-tantra-red w-full" />
 
       <div className="relative z-10 px-4 py-6 sm:py-8">
         <div className="max-w-5xl mx-auto">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-tantra-border">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-[var(--border)]">
             <div className="flex items-center gap-4">
-              <img src={LOGO_URL} alt="Tantra" className="h-12 w-auto object-contain" />
+              <img src={logoUrl} alt="Tantra" className="h-12 w-auto object-contain" />
               <div className="hidden sm:block">
                 <div className="label">RESERVATIONS</div>
-                <div className="text-xs text-tantra-muted">Staff dashboard</div>
+                <div className="text-xs text-muted">Staff dashboard</div>
               </div>
             </div>
-            <button onClick={logout} className="btn-outline px-5 py-2.5 text-xs">
-              Sign Out
-            </button>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <button onClick={logout} className="btn-outline px-5 py-2.5 text-xs">
+                Sign Out
+              </button>
+            </div>
           </div>
 
-          <div className="flex gap-8 mb-8 border-b border-tantra-border">
+          <div className="flex gap-8 mb-8 border-b border-[var(--border)]">
             <button
               onClick={() => setTab("issue")}
               className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${
-                tab === "issue" ? "text-white" : "text-tantra-muted hover:text-white"
+                tab === "issue" ? "text-default" : "text-muted hover:text-default"
               }`}
             >
               New Reservation
@@ -307,7 +364,7 @@ export default function AdminPage() {
             <button
               onClick={() => setTab("list")}
               className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${
-                tab === "list" ? "text-white" : "text-tantra-muted hover:text-white"
+                tab === "list" ? "text-default" : "text-muted hover:text-default"
               }`}
             >
               Guest List
@@ -321,7 +378,7 @@ export default function AdminPage() {
           {tab === "issue" && (
             <div className="max-w-xl">
               {issueSuccess ? (
-                <div className="bg-tantra-card tantra-border-strong p-7 sm:p-9">
+                <div className="bg-card tantra-border-strong p-7 sm:p-9">
                   <div className="flex items-center justify-center w-16 h-16 rounded-full bg-tantra-red/20 mb-5 mx-auto border-2 border-tantra-red animate-pulse-red">
                     <svg
                       className="w-8 h-8 text-tantra-red"
@@ -336,15 +393,15 @@ export default function AdminPage() {
 
                   <div className="text-center mb-2">
                     <span className="accent-line"></span>
-                    <span className="label mx-3 text-tantra-mutedLight">CONFIRMED</span>
+                    <span className="label mx-3">CONFIRMED</span>
                     <span className="accent-line"></span>
                   </div>
 
-                  <h2 className="display-text text-3xl text-white text-center mb-1">
+                  <h2 className="display-text text-3xl text-default text-center mb-1">
                     Reservation Issued
                   </h2>
-                  <p className="text-sm text-tantra-mutedLight text-center mb-6">
-                    <span className="text-white font-semibold">{issueSuccess.clientName}</span>
+                  <p className="text-sm text-muted text-center mb-6">
+                    <span className="text-default font-semibold">{issueSuccess.clientName}</span>
                     <span className="mx-2 text-tantra-red">·</span>
                     {issueSuccess.guestCount}{" "}
                     {issueSuccess.guestCount === 1 ? "guest" : "guests"}
@@ -356,19 +413,28 @@ export default function AdminPage() {
                     )}
                   </p>
 
-                  <div className="bg-tantra-black border border-tantra-red p-6 mb-5 text-center relative">
+                  <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
                     <div className="absolute top-0 left-0 w-2 h-2 bg-tantra-red"></div>
                     <div className="absolute top-0 right-0 w-2 h-2 bg-tantra-red"></div>
                     <div className="absolute bottom-0 left-0 w-2 h-2 bg-tantra-red"></div>
                     <div className="absolute bottom-0 right-0 w-2 h-2 bg-tantra-red"></div>
 
+                    {issueSuccess.eventDatetime && (
+                      <div className="mb-4 pb-4 border-b border-[var(--border)]">
+                        <div className="label mb-2">EVENT DATE</div>
+                        <div className="display-text text-default text-lg">
+                          {formatEventDate(issueSuccess.eventDatetime)}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="label mb-3">TICKET NUMBER</div>
-                    <div className="font-mono text-white text-3xl font-black tracking-wider">
+                    <div className="font-mono text-default text-3xl font-black tracking-wider">
                       {issueSuccess.ticketCode}
                     </div>
 
                     {issueSuccess.tableNumber && (
-                      <div className="mt-5 pt-5 border-t border-tantra-border">
+                      <div className="mt-5 pt-5 border-t border-[var(--border)]">
                         <div className="label mb-2">TABLE</div>
                         <div className="display-text text-tantra-red text-2xl">
                           {issueSuccess.tableNumber.toUpperCase()}
@@ -377,9 +443,9 @@ export default function AdminPage() {
                     )}
 
                     {issueSuccess.notes && (
-                      <div className="mt-5 pt-5 border-t border-tantra-border">
+                      <div className="mt-5 pt-5 border-t border-[var(--border)]">
                         <div className="label mb-2">NOTES</div>
-                        <div className="text-sm text-tantra-mutedLight italic">
+                        <div className="text-sm text-muted italic">
                           {issueSuccess.notes}
                         </div>
                       </div>
@@ -387,14 +453,14 @@ export default function AdminPage() {
                   </div>
 
                   {issueSuccess.emailSent ? (
-                    <div className="bg-green-950/40 border border-green-700/50 text-green-200 text-sm px-4 py-3 mb-5 flex items-start gap-2">
-                      <span className="text-green-400 font-bold">✓</span>
+                    <div className="bg-green-500/10 border border-green-500/40 text-green-600 dark:text-green-200 text-sm px-4 py-3 mb-5 flex items-start gap-2">
+                      <span className="font-bold">✓</span>
                       <span>
                         Email sent to <strong>{issueSuccess.email}</strong>
                       </span>
                     </div>
                   ) : (
-                    <div className="bg-tantra-red/10 border border-tantra-red text-red-200 text-sm px-4 py-3 mb-5">
+                    <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3 mb-5">
                       ⚠ Saved but email failed: {issueSuccess.emailError}
                     </div>
                   )}
@@ -409,19 +475,27 @@ export default function AdminPage() {
               ) : (
                 <form
                   onSubmit={handleIssueSubmit}
-                  className="bg-tantra-card tantra-border-strong p-7 sm:p-9 space-y-5"
+                  className="bg-card tantra-border-strong p-7 sm:p-9 space-y-5"
                 >
                   <div className="mb-1">
                     <div className="flex items-center gap-3 mb-3">
                       <span className="accent-line"></span>
                       <span className="label">NEW ENTRY</span>
                     </div>
-                    <h2 className="display-text text-3xl text-white mb-2">
-                      Add Guest
-                    </h2>
-                    <p className="text-sm text-tantra-muted">
+                    <h2 className="display-text text-3xl text-default mb-2">Add Guest</h2>
+                    <p className="text-sm text-muted">
                       Enter client details — they receive one ticket by email.
                     </p>
+                  </div>
+
+                  <div>
+                    <label className="label block mb-2">EVENT DATE & TIME</label>
+                    <input
+                      type="datetime-local"
+                      value={eventDatetime}
+                      onChange={(e) => setEventDatetime(e.target.value)}
+                      className="tantra-input w-full px-4 py-3.5"
+                    />
                   </div>
 
                   <div>
@@ -459,11 +533,11 @@ export default function AdminPage() {
 
                   <div>
                     <label className="label block mb-3">PARTY SIZE</label>
-                    <div className="flex items-center gap-4 bg-tantra-black border border-tantra-border p-4">
+                    <div className="flex items-center gap-4 bg-deep tantra-border p-4">
                       <button
                         type="button"
                         onClick={() => setGroupSize(Math.max(1, groupSize - 1))}
-                        className="w-12 h-12 bg-tantra-surface border border-tantra-border text-white hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold"
+                        className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold"
                       >
                         −
                       </button>
@@ -478,7 +552,7 @@ export default function AdminPage() {
                       <button
                         type="button"
                         onClick={() => setGroupSize(Math.min(50, groupSize + 1))}
-                        className="w-12 h-12 bg-tantra-surface border border-tantra-border text-white hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold"
+                        className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold"
                       >
                         +
                       </button>
@@ -487,7 +561,7 @@ export default function AdminPage() {
 
                   <div>
                     <label className="label block mb-2">
-                      TABLE <span className="normal-case tracking-normal text-tantra-muted/80">(optional)</span>
+                      TABLE <span className="normal-case tracking-normal text-subtle">(optional)</span>
                     </label>
                     <input
                       type="text"
@@ -500,7 +574,7 @@ export default function AdminPage() {
 
                   <div>
                     <label className="label block mb-2">
-                      NOTES <span className="normal-case tracking-normal text-tantra-muted/80">(birthdays, special requests)</span>
+                      NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span>
                     </label>
                     <input
                       type="text"
@@ -513,7 +587,7 @@ export default function AdminPage() {
 
                   <div>
                     <label className="label block mb-2">
-                      ISSUED BY <span className="normal-case tracking-normal text-tantra-muted/80">(optional)</span>
+                      ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span>
                     </label>
                     <input
                       type="text"
@@ -525,7 +599,7 @@ export default function AdminPage() {
                   </div>
 
                   {issueError && (
-                    <div className="bg-tantra-red/10 border border-tantra-red text-red-200 text-sm px-4 py-3">
+                    <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
                       {issueError}
                     </div>
                   )}
@@ -570,18 +644,18 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              <div className="bg-tantra-card tantra-border-strong overflow-hidden">
+              <div className="bg-card tantra-border-strong overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-tantra-black border-b border-tantra-red">
+                    <thead className="bg-deep border-b border-tantra-red">
                       <tr className="text-left">
-                        <th className="px-4 py-4 label text-tantra-mutedLight">Client</th>
-                        <th className="px-4 py-4 label text-tantra-mutedLight">Contact</th>
-                        <th className="px-4 py-4 label text-tantra-mutedLight">Party</th>
-                        <th className="px-4 py-4 label text-tantra-mutedLight">Table</th>
-                        <th className="px-4 py-4 label text-tantra-mutedLight">Ticket</th>
-                        <th className="px-4 py-4 label text-tantra-mutedLight">Email</th>
-                        <th className="px-4 py-4 label text-tantra-mutedLight">When</th>
+                        <th className="px-4 py-4 label">Client</th>
+                        <th className="px-4 py-4 label">Contact</th>
+                        <th className="px-4 py-4 label">Event</th>
+                        <th className="px-4 py-4 label">Party</th>
+                        <th className="px-4 py-4 label">Table</th>
+                        <th className="px-4 py-4 label">Ticket</th>
+                        <th className="px-4 py-4 label">Email</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -589,7 +663,7 @@ export default function AdminPage() {
                         <tr>
                           <td
                             colSpan={7}
-                            className="px-4 py-12 text-center text-tantra-muted"
+                            className="px-4 py-12 text-center text-muted"
                           >
                             {registrations.length === 0
                               ? "No reservations yet."
@@ -602,30 +676,37 @@ export default function AdminPage() {
                         return (
                           <tr
                             key={r.id}
-                            className="border-t border-tantra-border hover:bg-tantra-surface/50 transition"
+                            className="border-t border-[var(--border)] hover:bg-surface transition"
                           >
                             <td className="px-4 py-3.5">
-                              <div className="font-semibold text-white">
+                              <div className="font-semibold text-default">
                                 {r.full_name}
                               </div>
                               {r.notes && (
-                                <div className="text-xs text-tantra-mutedLight mt-1 italic">
+                                <div className="text-xs text-muted mt-1 italic">
                                   {r.notes}
                                 </div>
                               )}
                               {r.issued_by && (
-                                <div className="text-[10px] text-tantra-muted mt-0.5">
+                                <div className="text-[10px] text-subtle mt-0.5">
                                   by {r.issued_by}
                                 </div>
                               )}
                             </td>
                             <td className="px-4 py-3.5">
-                              <div className="text-xs text-tantra-mutedLight">
-                                {r.email}
-                              </div>
-                              <div className="text-xs text-tantra-muted font-mono">
+                              <div className="text-xs text-muted">{r.email}</div>
+                              <div className="text-xs text-subtle font-mono">
                                 {r.phone}
                               </div>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                              {r.event_datetime ? (
+                                <span className="text-default font-semibold">
+                                  {formatEventDate(r.event_datetime)}
+                                </span>
+                              ) : (
+                                <span className="text-subtle">—</span>
+                              )}
                             </td>
                             <td className="px-4 py-3.5">
                               <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">
@@ -634,17 +715,17 @@ export default function AdminPage() {
                             </td>
                             <td className="px-4 py-3.5">
                               {r.table_number ? (
-                                <span className="inline-block bg-tantra-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">
+                                <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">
                                   {r.table_number}
                                 </span>
                               ) : (
-                                <span className="text-tantra-muted text-xs">—</span>
+                                <span className="text-subtle text-xs">—</span>
                               )}
                             </td>
                             <td className="px-4 py-3.5">
                               {ticket ? (
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono text-white text-xs font-bold">
+                                  <span className="font-mono text-default text-xs font-bold">
                                     {ticket.ticket_code}
                                   </span>
                                   {ticket.checked_in && (
@@ -654,18 +735,15 @@ export default function AdminPage() {
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-tantra-muted text-xs">—</span>
+                                <span className="text-subtle text-xs">—</span>
                               )}
                             </td>
                             <td className="px-4 py-3.5 text-xs">
                               {r.email_sent ? (
-                                <span className="text-green-400">✓ Sent</span>
+                                <span className="text-green-500">✓</span>
                               ) : (
-                                <span className="text-tantra-red">✗ Failed</span>
+                                <span className="text-tantra-red">✗</span>
                               )}
-                            </td>
-                            <td className="px-4 py-3.5 text-tantra-muted text-xs whitespace-nowrap">
-                              {new Date(r.created_at).toLocaleString()}
                             </td>
                           </tr>
                         );
@@ -694,14 +772,10 @@ function StatCard({
   return (
     <div
       className={`p-5 sm:p-6 relative overflow-hidden ${
-        accent ? "bg-tantra-red text-white" : "bg-tantra-card tantra-border-strong text-white"
+        accent ? "bg-tantra-red text-white" : "bg-card tantra-border-strong text-default"
       }`}
     >
-      <div
-        className={`label mb-2 ${accent ? "text-white/80" : "text-tantra-mutedLight"}`}
-      >
-        {label}
-      </div>
+      <div className={`label mb-2 ${accent ? "text-white/80" : ""}`}>{label}</div>
       <div className="display-text text-4xl sm:text-5xl leading-none">{value}</div>
       {!accent && <div className="absolute top-0 right-0 w-1 h-full bg-tantra-red" />}
     </div>

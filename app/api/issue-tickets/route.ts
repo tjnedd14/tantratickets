@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       notes,
       issued_by,
       table_number,
+      event_datetime,
     } = body;
 
     if (!full_name || typeof full_name !== "string" || full_name.trim().length < 2) {
@@ -45,6 +46,16 @@ export async function POST(req: NextRequest) {
         { error: "Party size must be between 1 and 50" },
         { status: 400 }
       );
+    }
+
+    // Validate event_datetime if provided
+    let eventDateISO: string | null = null;
+    if (event_datetime) {
+      const d = new Date(event_datetime);
+      if (isNaN(d.getTime())) {
+        return NextResponse.json({ error: "Invalid event date/time" }, { status: 400 });
+      }
+      eventDateISO = d.toISOString();
     }
 
     const supabase = getAdminClient();
@@ -71,6 +82,7 @@ export async function POST(req: NextRequest) {
         group_size,
         notes: cleanNotes,
         table_number: cleanTable,
+        event_datetime: eventDateISO,
         issued_by: issued_by?.trim() || null,
         event_name: eventName,
         ip_address: ip,
@@ -112,6 +124,7 @@ export async function POST(req: NextRequest) {
       guestCount: group_size,
       notes: cleanNotes,
       tableNumber: cleanTable,
+      eventDatetime: eventDateISO,
       eventName,
       venueName,
     });
@@ -128,6 +141,7 @@ export async function POST(req: NextRequest) {
         ticketCode,
         notes: cleanNotes,
         tableNumber: cleanTable,
+        eventDatetime: eventDateISO,
         pdfBuffer,
       });
       emailSent = true;
@@ -150,6 +164,7 @@ export async function POST(req: NextRequest) {
       ticket_code: ticketCode,
       notes: cleanNotes,
       table_number: cleanTable,
+      event_datetime: eventDateISO,
       email_sent: emailSent,
       email_error: emailError,
     });

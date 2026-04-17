@@ -9,9 +9,22 @@ export const metadata: Metadata = {
   },
 };
 
+// Run before React hydrates to prevent light/dark mode flash
+const themeInitScript = `
+(function() {
+  try {
+    var t = localStorage.getItem('tantra_theme') || 'dark';
+    if (t === 'dark') document.documentElement.classList.add('dark');
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );
