@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useTheme } from "@/lib/theme";
 import { isValidEmail, calculateAge, formatEventDate } from "@/lib/utils";
 
-const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png";
-const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png";
+const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
 export default function SignupPage() {
   const { theme, toggle: toggleTheme, mounted: themeMounted } = useTheme();
@@ -72,7 +71,7 @@ export default function SignupPage() {
     }
   }
 
-  const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
+  const logoUrl = LOGO_WHITE; const logoFilter = theme === "dark" ? "none" : "invert(1)";
 
   const ThemeToggle = () => (
     <button onClick={toggleTheme} aria-label="Toggle theme" className="btn-icon w-10 h-10">
@@ -105,7 +104,7 @@ export default function SignupPage() {
         <div className="max-w-md mx-auto">
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" />
+            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" style={{ filter: logoFilter }} />
           </div>
 
           {success ? (

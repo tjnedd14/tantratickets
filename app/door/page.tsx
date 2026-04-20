@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTheme } from "@/lib/theme";
 import { formatEventDate } from "@/lib/utils";
 
-const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png";
-const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png";
+const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
 type ReservationTicket = {
   ticket_code: string;
@@ -227,7 +226,7 @@ export default function DoorPage() {
     setView("idle");
   }
 
-  const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
+  const logoUrl = LOGO_WHITE; const logoFilter = theme === "dark" ? "none" : "invert(1)";
 
   const ThemeToggle = () => (
     <button onClick={toggleTheme} aria-label="Toggle theme" className="btn-icon w-10 h-10">
@@ -255,7 +254,7 @@ export default function DoorPage() {
         </div>
         <form onSubmit={handleLogin} className="w-full max-w-sm bg-card tantra-border-strong p-10 relative z-10">
           <div className="flex justify-center mb-8">
-            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" />
+            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" style={{ filter: logoFilter }} />
           </div>
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="accent-line"></span>
@@ -279,7 +278,7 @@ export default function DoorPage() {
         <div className="max-w-2xl mx-auto">
           <div className="flex items-center justify-between gap-4 mb-6 pb-5 border-b border-[var(--border)]">
             <div className="flex items-center gap-3">
-              <img src={logoUrl} alt="Tantra" className="h-10 w-auto object-contain" />
+              <img src={logoUrl} alt="Tantra" className="h-10 w-auto object-contain" style={{ filter: logoFilter }} />
               <div>
                 <div className="label">DOOR</div>
                 <div className="text-xs text-muted">Ticket scanner</div>

@@ -17,8 +17,7 @@ import {
 import { useTheme } from "@/lib/theme";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
 
-const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png";
-const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png";
+const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
 type Registration = {
   id: string;
@@ -379,7 +378,7 @@ export default function AdminPage() {
   const obCheckedIn = openBarSignups.filter((s) => s.checked_in).length;
   const obPending = obTotal - obCheckedIn;
 
-  const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
+  const logoUrl = LOGO_WHITE; const logoFilter = theme === "dark" ? "none" : "invert(1)";
 
   const ThemeToggle = () => (
     <button onClick={toggleTheme} aria-label="Toggle theme" className="btn-icon w-10 h-10">
@@ -404,7 +403,7 @@ export default function AdminPage() {
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-tantra-red opacity-[0.08] blur-[120px] rounded-full" />
         </div>
         <form onSubmit={handleLogin} className="w-full max-w-sm bg-card tantra-border-strong p-10 relative z-10">
-          <div className="flex justify-center mb-8"><img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" /></div>
+          <div className="flex justify-center mb-8"><img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" style={{ filter: logoFilter }} /></div>
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="accent-line"></span><span className="label">STAFF ACCESS</span><span className="accent-line"></span>
           </div>
@@ -425,7 +424,7 @@ export default function AdminPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-[var(--border)]">
             <div className="flex items-center gap-4">
-              <img src={logoUrl} alt="Tantra" className="h-12 w-auto object-contain" />
+              <img src={logoUrl} alt="Tantra" className="h-12 w-auto object-contain" style={{ filter: logoFilter }} />
               <div className="hidden sm:block">
                 <div className="label">RESERVATIONS</div>
                 <div className="text-xs text-muted">Staff dashboard</div>
