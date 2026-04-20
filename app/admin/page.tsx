@@ -652,7 +652,14 @@ function FilterPill({ active, onClick, label }: { active: boolean; onClick: () =
   );
 }
 
-function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete }: any) {
+function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete }: {
+  registrations: Registration[];
+  totalRegistrations: number;
+  checkingIn: Record<string, boolean>;
+  onToggleCheckIn: (code: string, current: boolean) => void;
+  onEdit: (r: Registration) => void;
+  onDelete: (r: Registration) => void;
+}) {
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
       <div className="overflow-x-auto">
