@@ -10,11 +10,8 @@ import {
 } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 
-// Logos: dark mode uses original (red on dark), light mode uses inverted/dark version
-// User mentioned wanting a white logo — placeholder for now uses a CSS filter swap.
-// If user provides a white logo URL, swap LOGO_DARK below.
-const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png"; // shown in dark mode (logo IS the brand red on dark)
-const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png"; // shown in light mode (red on white works fine)
+const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png";
+const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png";
 
 type Registration = {
   id: string;
@@ -34,11 +31,13 @@ type Registration = {
     ticket_code: string;
     guest_name: string;
     checked_in: boolean;
+    checked_in_at: string | null;
     person_number: number;
   }[];
 };
 
 type Tab = "issue" | "list";
+type CheckInFilter = "all" | "pending" | "checked_in";
 
 export default function AdminPage() {
   const { theme, toggle: toggleTheme, mounted: themeMounted } = useTheme();
@@ -75,8 +74,9 @@ export default function AdminPage() {
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<CheckInFilter>("all");
+  const [checkingIn, setCheckingIn] = useState<Record<string, boolean>>({}); // ticket_code -> loading
 
-  // Initialize default datetime
   useEffect(() => {
     if (!eventDatetime) setEventDatetime(getDefaultEventDatetime());
   }, []);
@@ -150,6 +150,68 @@ export default function AdminPage() {
     window.location.href = `/api/admin/export?format=csv&pw=${encodeURIComponent(password)}`;
   }
 
+  // Optimistic check-in toggle
+  async function toggleCheckIn(ticketCode: string, currentStatus: boolean) {
+    const next = !currentStatus;
+
+    // Optimistic update
+    setRegistrations((prev) =>
+      prev.map((r) => ({
+        ...r,
+        tickets: r.tickets.map((t) =>
+          t.ticket_code === ticketCode
+            ? {
+                ...t,
+                checked_in: next,
+                checked_in_at: next ? new Date().toISOString() : null,
+              }
+            : t
+        ),
+      }))
+    );
+
+    setCheckingIn((m) => ({ ...m, [ticketCode]: true }));
+
+    try {
+      const res = await fetch("/api/check-in", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-password": password,
+        },
+        body: JSON.stringify({ ticket_code: ticketCode, checked_in: next }),
+      });
+
+      if (!res.ok) {
+        // Revert on error
+        setRegistrations((prev) =>
+          prev.map((r) => ({
+            ...r,
+            tickets: r.tickets.map((t) =>
+              t.ticket_code === ticketCode
+                ? {
+                    ...t,
+                    checked_in: currentStatus,
+                    checked_in_at: currentStatus ? t.checked_in_at : null,
+                  }
+                : t
+            ),
+          }))
+        );
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Failed to update check-in");
+      }
+    } catch (err) {
+      alert("Network error updating check-in");
+    } finally {
+      setCheckingIn((m) => {
+        const next = { ...m };
+        delete next[ticketCode];
+        return next;
+      });
+    }
+  }
+
   async function handleIssueSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIssueError("");
@@ -217,7 +279,6 @@ export default function AdminPage() {
       setGroupSize(1);
       setNotes("");
       setTableNumber("");
-      // Keep eventDatetime — same date for the night
 
       refreshList();
     } catch (err: any) {
@@ -227,7 +288,15 @@ export default function AdminPage() {
     }
   }
 
+  // Apply search + filter
   const filtered = registrations.filter((r) => {
+    const ticket = r.tickets[0];
+
+    // Filter by check-in status
+    if (filter === "pending" && ticket?.checked_in) return false;
+    if (filter === "checked_in" && !ticket?.checked_in) return false;
+
+    // Search
     if (!search.trim()) return true;
     const s = search.toLowerCase();
     return (
@@ -241,14 +310,13 @@ export default function AdminPage() {
 
   const totalGuests = registrations.reduce((sum, r) => sum + r.group_size, 0);
   const totalCheckedIn = registrations.reduce(
-    (sum, r) => sum + r.tickets.filter((t) => t.checked_in).length,
+    (sum, r) => sum + (r.tickets[0]?.checked_in ? r.group_size : 0),
     0
   );
+  const pendingGuests = totalGuests - totalCheckedIn;
 
-  // Show light logo in light mode, original in dark mode
   const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
 
-  // Theme toggle component
   const ThemeToggle = () => (
     <button
       onClick={toggleTheme}
@@ -257,13 +325,11 @@ export default function AdminPage() {
       title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
     >
       {!themeMounted ? null : theme === "dark" ? (
-        // Sun icon
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10l1.4 1.4M3 12h2m14 0h2M5.6 18.4l1.4-1.4m10-10l1.4-1.4" />
           <circle cx="12" cy="12" r="4" />
         </svg>
       ) : (
-        // Moon icon
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
         </svg>
@@ -620,11 +686,11 @@ export default function AdminPage() {
             <div>
               <div className="grid grid-cols-3 gap-3 sm:gap-5 mb-6">
                 <StatCard label="RESERVATIONS" value={registrations.length} />
-                <StatCard label="TOTAL GUESTS" value={totalGuests} accent />
-                <StatCard label="CHECKED IN" value={totalCheckedIn} />
+                <StatCard label="CHECKED IN" value={totalCheckedIn} suffix={`of ${totalGuests}`} accent />
+                <StatCard label="PENDING" value={pendingGuests} />
               </div>
 
-              <div className="flex flex-wrap gap-3 mb-5">
+              <div className="flex flex-wrap gap-3 mb-4">
                 <input
                   type="text"
                   value={search}
@@ -644,6 +710,29 @@ export default function AdminPage() {
                 </button>
               </div>
 
+              {/* Filter pills */}
+              <div className="flex gap-2 mb-5 flex-wrap">
+                <FilterPill
+                  active={filter === "all"}
+                  onClick={() => setFilter("all")}
+                  label={`All (${registrations.length})`}
+                />
+                <FilterPill
+                  active={filter === "pending"}
+                  onClick={() => setFilter("pending")}
+                  label={`Pending (${
+                    registrations.filter((r) => !r.tickets[0]?.checked_in).length
+                  })`}
+                />
+                <FilterPill
+                  active={filter === "checked_in"}
+                  onClick={() => setFilter("checked_in")}
+                  label={`Checked In (${
+                    registrations.filter((r) => r.tickets[0]?.checked_in).length
+                  })`}
+                />
+              </div>
+
               <div className="bg-card tantra-border-strong overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -655,7 +744,7 @@ export default function AdminPage() {
                         <th className="px-4 py-4 label">Party</th>
                         <th className="px-4 py-4 label">Table</th>
                         <th className="px-4 py-4 label">Ticket</th>
-                        <th className="px-4 py-4 label">Email</th>
+                        <th className="px-4 py-4 label text-center">Check-in</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -673,10 +762,16 @@ export default function AdminPage() {
                       )}
                       {filtered.map((r) => {
                         const ticket = r.tickets[0];
+                        const isCheckedIn = ticket?.checked_in ?? false;
+                        const isLoading = ticket
+                          ? checkingIn[ticket.ticket_code]
+                          : false;
                         return (
                           <tr
                             key={r.id}
-                            className="border-t border-[var(--border)] hover:bg-surface transition"
+                            className={`border-t border-[var(--border)] hover:bg-surface transition ${
+                              isCheckedIn ? "opacity-70" : ""
+                            }`}
                           >
                             <td className="px-4 py-3.5">
                               <div className="font-semibold text-default">
@@ -724,25 +819,25 @@ export default function AdminPage() {
                             </td>
                             <td className="px-4 py-3.5">
                               {ticket ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-default text-xs font-bold">
-                                    {ticket.ticket_code}
-                                  </span>
-                                  {ticket.checked_in && (
-                                    <span className="bg-green-600 text-white px-1.5 py-0.5 text-[9px] font-bold">
-                                      IN
-                                    </span>
-                                  )}
-                                </div>
+                                <span className="font-mono text-default text-xs font-bold">
+                                  {ticket.ticket_code}
+                                </span>
                               ) : (
                                 <span className="text-subtle text-xs">—</span>
                               )}
                             </td>
-                            <td className="px-4 py-3.5 text-xs">
-                              {r.email_sent ? (
-                                <span className="text-green-500">✓</span>
+                            <td className="px-4 py-3.5 text-center">
+                              {ticket ? (
+                                <CheckInButton
+                                  checkedIn={isCheckedIn}
+                                  loading={isLoading}
+                                  checkedInAt={ticket.checked_in_at}
+                                  onClick={() =>
+                                    toggleCheckIn(ticket.ticket_code, isCheckedIn)
+                                  }
+                                />
                               ) : (
-                                <span className="text-tantra-red">✗</span>
+                                <span className="text-subtle text-xs">—</span>
                               )}
                             </td>
                           </tr>
@@ -763,10 +858,12 @@ export default function AdminPage() {
 function StatCard({
   label,
   value,
+  suffix,
   accent = false,
 }: {
   label: string;
   value: number;
+  suffix?: string;
   accent?: boolean;
 }) {
   return (
@@ -776,8 +873,90 @@ function StatCard({
       }`}
     >
       <div className={`label mb-2 ${accent ? "text-white/80" : ""}`}>{label}</div>
-      <div className="display-text text-4xl sm:text-5xl leading-none">{value}</div>
+      <div className="flex items-baseline gap-2">
+        <div className="display-text text-4xl sm:text-5xl leading-none">{value}</div>
+        {suffix && (
+          <div
+            className={`text-xs font-semibold ${
+              accent ? "text-white/70" : "text-muted"
+            }`}
+          >
+            {suffix}
+          </div>
+        )}
+      </div>
       {!accent && <div className="absolute top-0 right-0 w-1 h-full bg-tantra-red" />}
     </div>
+  );
+}
+
+function FilterPill({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition border ${
+        active
+          ? "bg-tantra-red text-white border-tantra-red"
+          : "bg-card text-muted border-[var(--border)] hover:border-tantra-red hover:text-default"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CheckInButton({
+  checkedIn,
+  loading,
+  checkedInAt,
+  onClick,
+}: {
+  checkedIn: boolean;
+  loading: boolean;
+  checkedInAt: string | null;
+  onClick: () => void;
+}) {
+  if (checkedIn) {
+    return (
+      <button
+        onClick={onClick}
+        disabled={loading}
+        className="inline-flex flex-col items-center gap-0.5 px-3 py-2 bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition disabled:opacity-50"
+        title="Click to undo check-in"
+      >
+        <span className="flex items-center gap-1">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          IN
+        </span>
+        {checkedInAt && (
+          <span className="text-[9px] opacity-80">
+            {new Date(checkedInAt).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="inline-flex items-center gap-1 px-3 py-2 bg-transparent border-2 border-[var(--border-strong)] text-muted text-xs font-bold uppercase tracking-wider hover:border-tantra-red hover:text-tantra-red transition disabled:opacity-50"
+    >
+      {loading ? "..." : "CHECK IN"}
+    </button>
   );
 }
