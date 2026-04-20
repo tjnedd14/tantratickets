@@ -2,6 +2,8 @@ import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { formatEventDateCompact } from "./utils";
 
+const WHITE_LOGO_URL = "https://i.imgur.com/xAQenGt.png";
+
 type Params = {
   ticketCode: string;
   fullName: string;
@@ -9,6 +11,14 @@ type Params = {
   eventName: string;
   venueName: string;
 };
+
+// Fetch image and convert to base64 data URL (for use with jsPDF addImage)
+async function fetchImageAsDataUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  const buffer = await res.arrayBuffer();
+  const base64 = Buffer.from(buffer).toString("base64");
+  return `data:image/png;base64,${base64}`;
+}
 
 export async function buildOpenBarPassPDF({
   ticketCode,
@@ -18,7 +28,7 @@ export async function buildOpenBarPassPDF({
   venueName,
 }: Params): Promise<Buffer> {
   const pageW = 180;
-  const pageH = 100;
+  const pageH = 105; // a touch taller to accommodate logo
 
   const doc = new jsPDF({
     orientation: "landscape",
@@ -30,7 +40,7 @@ export async function buildOpenBarPassPDF({
   const BLACK: [number, number, number] = [0, 0, 0];
   const GRAY: [number, number, number] = [120, 120, 120];
 
-  // Black background for the whole thing
+  // Black background
   doc.setFillColor(...BLACK);
   doc.rect(0, 0, pageW, pageH, "F");
 
@@ -52,61 +62,69 @@ export async function buildOpenBarPassPDF({
   // ========== MAIN SECTION ==========
   const mainX = 10;
 
-  // Top label
+  // White logo at top of main section
+  try {
+    const logoDataUrl = await fetchImageAsDataUrl(WHITE_LOGO_URL);
+    doc.addImage(logoDataUrl, "PNG", mainX, 11, 18, 18);
+  } catch (err) {
+    console.error("Failed to load logo:", err);
+    // Continue without logo
+  }
+
+  // Top label (shifted right to make room for logo)
   doc.setTextColor(...RED);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
-  doc.text("COMPLIMENTARY PASS", mainX, 16);
+  doc.text("COMPLIMENTARY PASS", mainX + 22, 18);
+
+  doc.setTextColor(180, 180, 180);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.text(venueName, mainX + 22, 24);
 
   // Big title: "OPEN BAR"
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(36);
-  doc.text("OPEN BAR", mainX, 34);
+  doc.setFontSize(34);
+  doc.text("OPEN BAR", mainX, 46);
 
   // Event name subtitle
   doc.setTextColor(...RED);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text(eventName.toUpperCase(), mainX, 42);
-
-  // Venue
-  doc.setTextColor(180, 180, 180);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(venueName, mainX, 47);
+  doc.text(eventName.toUpperCase(), mainX, 53);
 
   // Red accent
   doc.setFillColor(...RED);
-  doc.rect(mainX, 51, 30, 0.8, "F");
+  doc.rect(mainX, 57, 30, 0.8, "F");
 
   // Guest name
   doc.setTextColor(120, 120, 120);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text("ADMIT", mainX, 60);
+  doc.text("ADMIT", mainX, 66);
 
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text(fullName.toUpperCase(), mainX, 68, { maxWidth: qrSectionX - mainX - 10 });
+  doc.text(fullName.toUpperCase(), mainX, 74, { maxWidth: qrSectionX - mainX - 10 });
 
   // Date + time
   if (eventDatetime) {
     doc.setTextColor(120, 120, 120);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
-    doc.text("OPEN BAR HOURS", mainX, 78);
+    doc.text("OPEN BAR HOURS", mainX, 84);
 
     doc.setTextColor(...RED);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(13);
-    doc.text(formatEventDateCompact(eventDatetime), mainX, 86);
+    doc.text(formatEventDateCompact(eventDatetime), mainX, 92);
 
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("9:30 PM — 11:30 PM", mainX, 91);
+    doc.text("9:30 PM — 11:30 PM", mainX, 98);
   }
 
   // ========== QR SECTION ==========
@@ -117,10 +135,10 @@ export async function buildOpenBarPassPDF({
   doc.setFontSize(7);
   doc.text("SCAN AT ENTRY", qrCenterX, 17, { align: "center" });
 
-  // White square behind QR (since the background is black)
   const qrSize = 42;
   const qrX = qrCenterX - qrSize / 2;
   const qrY = 21;
+
   doc.setFillColor(255, 255, 255);
   doc.rect(qrX - 2, qrY - 2, qrSize + 4, qrSize + 4, "F");
 

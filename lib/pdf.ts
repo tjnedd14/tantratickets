@@ -1,6 +1,112 @@
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { formatEventDateCompact, formatEventTime } from "./utils";
+import zlib from "zlib";
+
+const WHITE_LOGO_URL = "https://i.imgur.com/xAQenGt.png";
+
+// ---- PNG color inversion (so a white logo becomes black for white-bg tickets) ----
+
+const crcTable: number[] = (() => {
+  const table: number[] = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Buffer): Buffer {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc = (crcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8)) >>> 0;
+  }
+  const out = Buffer.alloc(4);
+  out.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 0);
+  return out;
+}
+
+// Inverts RGB channels of a PNG, preserving alpha. Falls back to original on error.
+function invertPngColors(buffer: Buffer): Buffer {
+  // PNG signature
+  if (buffer[0] !== 0x89 || buffer[1] !== 0x50) {
+    throw new Error("Not a PNG");
+  }
+
+  let offset = 8;
+  const idatChunks: Buffer[] = [];
+  let width = 0, height = 0, bitDepth = 0, colorType = 0;
+  const outChunks: Buffer[] = [buffer.slice(0, 8)];
+
+  while (offset < buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.slice(offset + 4, offset + 8).toString("ascii");
+    const data = buffer.slice(offset + 8, offset + 8 + length);
+
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      outChunks.push(buffer.slice(offset, offset + 12 + length));
+    } else if (type === "IDAT") {
+      idatChunks.push(data);
+    } else if (type === "IEND") {
+      break;
+    } else {
+      outChunks.push(buffer.slice(offset, offset + 12 + length));
+    }
+    offset += 12 + length;
+  }
+
+  if (bitDepth !== 8) throw new Error(`Unsupported bit depth: ${bitDepth}`);
+  const bytesPerPixel = colorType === 6 ? 4 : colorType === 2 ? 3 : -1;
+  if (bytesPerPixel < 0) throw new Error(`Unsupported color type: ${colorType}`);
+
+  const scanlineLength = width * bytesPerPixel + 1;
+  const compressed = Buffer.concat(idatChunks);
+  const decompressed = zlib.inflateSync(compressed);
+
+  for (let y = 0; y < height; y++) {
+    const lineStart = y * scanlineLength;
+    for (let x = 0; x < width; x++) {
+      const px = lineStart + 1 + x * bytesPerPixel;
+      decompressed[px] = 255 - decompressed[px];
+      decompressed[px + 1] = 255 - decompressed[px + 1];
+      decompressed[px + 2] = 255 - decompressed[px + 2];
+    }
+  }
+
+  const recompressed = zlib.deflateSync(decompressed);
+
+  const idatLen = Buffer.alloc(4);
+  idatLen.writeUInt32BE(recompressed.length, 0);
+  const idatType = Buffer.from("IDAT", "ascii");
+  outChunks.push(idatLen, idatType, recompressed, crc32(Buffer.concat([idatType, recompressed])));
+
+  const iendLen = Buffer.alloc(4);
+  const iendType = Buffer.from("IEND", "ascii");
+  outChunks.push(iendLen, iendType, crc32(iendType));
+
+  return Buffer.concat(outChunks);
+}
+
+async function fetchBlackLogo(): Promise<string | null> {
+  try {
+    const res = await fetch(WHITE_LOGO_URL);
+    const raw = Buffer.from(await res.arrayBuffer());
+    const inverted = invertPngColors(raw);
+    return `data:image/png;base64,${inverted.toString("base64")}`;
+  } catch (err) {
+    console.error("Logo fetch/invert failed:", err);
+    return null;
+  }
+}
+
+// ---- End logo helper ----
 
 type Params = {
   ticketCode: string;
@@ -23,7 +129,6 @@ export async function buildTicketPDF({
   eventName,
   venueName,
 }: Params): Promise<Buffer> {
-  // Wider page to fit QR section cleanly on the right
   const pageW = 230;
   const pageH = 95;
 
@@ -37,66 +142,52 @@ export async function buildTicketPDF({
   const BLACK: [number, number, number] = [0, 0, 0];
   const GRAY: [number, number, number] = [120, 120, 120];
 
-  // White bg
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageW, pageH, "F");
 
-  // Red top & bottom bars
   doc.setFillColor(...RED);
   doc.rect(0, 0, pageW, 5, "F");
   doc.rect(0, pageH - 3, pageW, 3, "F");
 
-  // Main outer border
   doc.setDrawColor(...BLACK);
   doc.setLineWidth(0.4);
   doc.rect(4, 8, pageW - 8, pageH - 14);
 
-  // Divide page into 3 sections: MAIN | QR | STUB
-  // Main: 0 to ~pageW-95
-  // QR section: pageW-95 to pageW-50
-  // Stub: pageW-50 to pageW
   const qrSectionX = pageW - 95;
   const stubX = pageW - 50;
 
-  // Vertical dividers (dashed)
   doc.setLineDashPattern([1, 1], 0);
   doc.setLineWidth(0.2);
   doc.line(qrSectionX, 10, qrSectionX, pageH - 5);
   doc.line(stubX, 10, stubX, pageH - 5);
   doc.setLineDashPattern([], 0);
 
-  // ============ MAIN SECTION ============
   const mainX = 10;
   const mainRight = qrSectionX - 6;
   const mainWidth = mainRight - mainX;
 
-  // Header row
+  // Black logo at the top left of the main section
+  const blackLogo = await fetchBlackLogo();
+  if (blackLogo) {
+    doc.addImage(blackLogo, "PNG", mainX, 11, 14, 14);
+  }
+
   doc.setTextColor(...RED);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text("GUEST LIST ENTRY", mainX, 15);
+  doc.text("GUEST LIST ENTRY", mainX + 18, 16);
+
+  doc.setTextColor(120, 120, 120);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.text(venueName, mainX + 18, 22);
 
   if (eventDatetime) {
     doc.setTextColor(...RED);
+    doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
     doc.text("EVENT DATE", mainRight, 15, { align: "right" });
-  }
 
-  // Event name
-  const eventNameMaxWidth = eventDatetime ? mainWidth - 50 : mainWidth;
-  doc.setTextColor(...BLACK);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.text(eventName.toUpperCase(), mainX, 25, { maxWidth: eventNameMaxWidth });
-
-  // Venue
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(80, 80, 80);
-  doc.text(venueName, mainX, 31);
-
-  // Date right
-  if (eventDatetime) {
     doc.setTextColor(...BLACK);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(12);
@@ -108,18 +199,21 @@ export async function buildTicketPDF({
     doc.text(formatEventTime(eventDatetime), mainRight, 30, { align: "right" });
   }
 
-  // Red accent
-  doc.setFillColor(...RED);
-  doc.rect(mainX, 35, 25, 1, "F");
+  const eventNameMaxWidth = eventDatetime ? mainWidth - 50 : mainWidth;
+  doc.setTextColor(...BLACK);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text(eventName.toUpperCase(), mainX, 36, { maxWidth: eventNameMaxWidth });
 
-  // Content: two columns
+  doc.setFillColor(...RED);
+  doc.rect(mainX, 40, 25, 1, "F");
+
   const col1X = mainX;
   const col2X = mainX + mainWidth / 2 + 2;
   const col1Width = mainWidth / 2 - 6;
   const col2Width = mainRight - col2X;
-  const contentY = 44;
+  const contentY = 49;
 
-  // Column 1: Reservation
   doc.setTextColor(...GRAY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
@@ -139,14 +233,12 @@ export async function buildTicketPDF({
   doc.setFontSize(18);
   doc.text(`${guestCount} ${guestCount === 1 ? "GUEST" : "GUESTS"}`, col1X, contentY + 26);
 
-  // Column 2: Table + Notes
   if (tableNumber || (notes && notes.trim())) {
     doc.setDrawColor(220, 220, 220);
     doc.setLineWidth(0.2);
     doc.line(col2X - 3, contentY - 2, col2X - 3, pageH - 8);
 
     let col2Y = contentY;
-
     if (tableNumber) {
       doc.setTextColor(...RED);
       doc.setFont("helvetica", "bold");
@@ -174,16 +266,14 @@ export async function buildTicketPDF({
     }
   }
 
-  // ============ QR SECTION ============
+  // QR section
   const qrCenterX = qrSectionX + (stubX - qrSectionX) / 2;
 
-  // Label
   doc.setTextColor(...RED);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
   doc.text("SCAN AT ENTRY", qrCenterX, 15, { align: "center" });
 
-  // Generate QR code
   const qrDataUrl = await QRCode.toDataURL(ticketCode, {
     width: 500,
     margin: 1,
@@ -191,13 +281,11 @@ export async function buildTicketPDF({
     color: { dark: "#000000", light: "#ffffff" },
   });
 
-  // QR size: ~40mm, centered in the section
   const qrSize = 42;
   const qrX = qrCenterX - qrSize / 2;
   const qrY = 20;
   doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
 
-  // Ticket code under QR
   doc.setTextColor(...GRAY);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6);
@@ -208,13 +296,12 @@ export async function buildTicketPDF({
   doc.setFontSize(12);
   doc.text(ticketCode, qrCenterX, qrY + qrSize + 11, { align: "center" });
 
-  // Small note below
   doc.setTextColor(...GRAY);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6);
   doc.text("Show this to the hostess", qrCenterX, pageH - 8, { align: "center" });
 
-  // ============ STUB SECTION ============
+  // Stub
   const stubCenterX = stubX + (pageW - stubX) / 2;
   const stubRight = pageW - 8;
   const stubLeft = stubX + 6;
@@ -234,13 +321,11 @@ export async function buildTicketPDF({
   doc.setFontSize(6);
   doc.text(guestCount === 1 ? "GUEST" : "GUESTS", stubCenterX, 54, { align: "center" });
 
-  // Divider
   doc.setDrawColor(230, 230, 230);
   doc.setLineWidth(0.2);
   doc.line(stubLeft, 58, stubRight, 58);
 
   let bottomY = 65;
-
   if (tableNumber) {
     doc.setTextColor(...GRAY);
     doc.setFontSize(6);

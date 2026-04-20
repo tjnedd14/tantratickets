@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { formatEventDate } from "./utils";
 
-const LOGO_URL = "https://i.imgur.com/tEFCuKr.png";
+const LOGO_URL = "https://i.imgur.com/xAQenGt.png";
 
 type SendTicketEmailParams = {
   to: string;
