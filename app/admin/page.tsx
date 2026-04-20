@@ -1,14 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   isValidEmail,
   isValidPhone,
   normalizePhone,
   formatEventDate,
   getDefaultEventDatetime,
+  isoToDateKey,
+  getTodayKey,
+  getTomorrowKey,
+  getTonightKey,
+  getThisWeekendKeys,
+  formatDateKey,
+  toDateKey,
 } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
+import AnalyticsPanel from "@/components/AnalyticsPanel";
 
 const LOGO_DARK = "https://i.imgur.com/tEFCuKr.png";
 const LOGO_LIGHT = "https://i.imgur.com/tEFCuKr.png";
@@ -38,6 +46,7 @@ type Registration = {
 
 type Tab = "issue" | "list";
 type CheckInFilter = "all" | "pending" | "checked_in";
+type DateFilterMode = "specific" | "all" | "upcoming";
 
 export default function AdminPage() {
   const { theme, toggle: toggleTheme, mounted: themeMounted } = useTheme();
@@ -49,6 +58,7 @@ export default function AdminPage() {
 
   const [tab, setTab] = useState<Tab>("issue");
 
+  // Issue form
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -71,11 +81,14 @@ export default function AdminPage() {
     emailError: string | null;
   } | null>(null);
 
+  // List
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<CheckInFilter>("all");
-  const [checkingIn, setCheckingIn] = useState<Record<string, boolean>>({}); // ticket_code -> loading
+  const [dateMode, setDateMode] = useState<DateFilterMode>("specific");
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayKey());
+  const [checkingIn, setCheckingIn] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!eventDatetime) setEventDatetime(getDefaultEventDatetime());
@@ -150,11 +163,8 @@ export default function AdminPage() {
     window.location.href = `/api/admin/export?format=csv&pw=${encodeURIComponent(password)}`;
   }
 
-  // Optimistic check-in toggle
   async function toggleCheckIn(ticketCode: string, currentStatus: boolean) {
     const next = !currentStatus;
-
-    // Optimistic update
     setRegistrations((prev) =>
       prev.map((r) => ({
         ...r,
@@ -169,7 +179,6 @@ export default function AdminPage() {
         ),
       }))
     );
-
     setCheckingIn((m) => ({ ...m, [ticketCode]: true }));
 
     try {
@@ -181,19 +190,13 @@ export default function AdminPage() {
         },
         body: JSON.stringify({ ticket_code: ticketCode, checked_in: next }),
       });
-
       if (!res.ok) {
-        // Revert on error
         setRegistrations((prev) =>
           prev.map((r) => ({
             ...r,
             tickets: r.tickets.map((t) =>
               t.ticket_code === ticketCode
-                ? {
-                    ...t,
-                    checked_in: currentStatus,
-                    checked_in_at: currentStatus ? t.checked_in_at : null,
-                  }
+                ? { ...t, checked_in: currentStatus, checked_in_at: currentStatus ? t.checked_in_at : null }
                 : t
             ),
           }))
@@ -288,15 +291,40 @@ export default function AdminPage() {
     }
   }
 
-  // Apply search + filter
-  const filtered = registrations.filter((r) => {
-    const ticket = r.tickets[0];
+  // ======= Date + Filter logic =======
+  const { availableDates, dateFilteredRegs } = useMemo(() => {
+    // All unique event dates (for dropdown)
+    const dateSet = new Set<string>();
+    for (const r of registrations) {
+      if (r.event_datetime) {
+        const k = isoToDateKey(r.event_datetime);
+        if (k) dateSet.add(k);
+      }
+    }
+    const availableDates = Array.from(dateSet).sort().reverse(); // newest first
 
-    // Filter by check-in status
+    let filtered = registrations;
+
+    if (dateMode === "specific" && selectedDate) {
+      filtered = registrations.filter(
+        (r) => r.event_datetime && isoToDateKey(r.event_datetime) === selectedDate
+      );
+    } else if (dateMode === "upcoming") {
+      const today = getTodayKey();
+      filtered = registrations.filter(
+        (r) => r.event_datetime && isoToDateKey(r.event_datetime) >= today
+      );
+    }
+    // "all" = no filtering
+
+    return { availableDates, dateFilteredRegs: filtered };
+  }, [registrations, dateMode, selectedDate]);
+
+  const searchAndStatusFiltered = dateFilteredRegs.filter((r) => {
+    const ticket = r.tickets[0];
     if (filter === "pending" && ticket?.checked_in) return false;
     if (filter === "checked_in" && !ticket?.checked_in) return false;
 
-    // Search
     if (!search.trim()) return true;
     const s = search.toLowerCase();
     return (
@@ -308,8 +336,10 @@ export default function AdminPage() {
     );
   });
 
-  const totalGuests = registrations.reduce((sum, r) => sum + r.group_size, 0);
-  const totalCheckedIn = registrations.reduce(
+  // Stats use the date-filtered set (but not search)
+  const totalReservations = dateFilteredRegs.length;
+  const totalGuests = dateFilteredRegs.reduce((sum, r) => sum + r.group_size, 0);
+  const totalCheckedIn = dateFilteredRegs.reduce(
     (sum, r) => sum + (r.tickets[0]?.checked_in ? r.group_size : 0),
     0
   );
@@ -318,12 +348,7 @@ export default function AdminPage() {
   const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
 
   const ThemeToggle = () => (
-    <button
-      onClick={toggleTheme}
-      aria-label="Toggle theme"
-      className="btn-icon w-10 h-10"
-      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-    >
+    <button onClick={toggleTheme} aria-label="Toggle theme" className="btn-icon w-10 h-10">
       {!themeMounted ? null : theme === "dark" ? (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10l1.4 1.4M3 12h2m14 0h2M5.6 18.4l1.4-1.4m10-10l1.4-1.4" />
@@ -340,52 +365,34 @@ export default function AdminPage() {
   if (!authed) {
     return (
       <main className="min-h-screen flex items-center justify-center px-4 grain relative bg-app">
-        <div className="absolute top-4 right-4 z-20">
-          <ThemeToggle />
-        </div>
-
+        <div className="absolute top-4 right-4 z-20"><ThemeToggle /></div>
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-tantra-red opacity-[0.08] blur-[120px] rounded-full" />
         </div>
-
-        <form
-          onSubmit={handleLogin}
-          className="w-full max-w-sm bg-card tantra-border-strong rounded-none p-10 relative z-10"
-        >
+        <form onSubmit={handleLogin} className="w-full max-w-sm bg-card tantra-border-strong p-10 relative z-10">
           <div className="flex justify-center mb-8">
             <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" />
           </div>
-
           <div className="flex items-center justify-center gap-3 mb-2">
             <span className="accent-line"></span>
             <span className="label">STAFF ACCESS</span>
             <span className="accent-line"></span>
           </div>
-
-          <p className="text-muted text-sm text-center mb-7">
-            Enter password to continue
-          </p>
-
+          <p className="text-muted text-sm text-center mb-7">Enter password to continue</p>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="tantra-input w-full rounded-none px-4 py-3.5 mb-4"
+            className="tantra-input w-full px-4 py-3.5 mb-4"
             placeholder="Password"
             autoFocus
           />
-
           {authError && (
             <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3 mb-4">
               {authError}
             </div>
           )}
-
-          <button
-            type="submit"
-            disabled={authLoading}
-            className="btn-red w-full py-4 text-sm rounded-none"
-          >
+          <button type="submit" disabled={authLoading} className="btn-red w-full py-4 text-sm">
             {authLoading ? "Checking..." : "Sign In"}
           </button>
         </form>
@@ -398,7 +405,7 @@ export default function AdminPage() {
       <div className="h-1 bg-tantra-red w-full" />
 
       <div className="relative z-10 px-4 py-6 sm:py-8">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-[var(--border)]">
             <div className="flex items-center gap-4">
               <img src={logoUrl} alt="Tantra" className="h-12 w-auto object-contain" />
@@ -408,299 +415,73 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <a
-                href="/door"
-                className="btn-outline px-5 py-2.5 text-xs flex items-center gap-1.5"
-                title="Open scanner page for door staff"
-              >
+              <a href="/door" className="btn-outline px-5 py-2.5 text-xs flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M9 9h6v6H9z" />
                 </svg>
                 Door
               </a>
               <ThemeToggle />
-              <button onClick={logout} className="btn-outline px-5 py-2.5 text-xs">
-                Sign Out
-              </button>
+              <button onClick={logout} className="btn-outline px-5 py-2.5 text-xs">Sign Out</button>
             </div>
           </div>
 
           <div className="flex gap-8 mb-8 border-b border-[var(--border)]">
-            <button
-              onClick={() => setTab("issue")}
-              className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${
-                tab === "issue" ? "text-default" : "text-muted hover:text-default"
-              }`}
-            >
+            <TabButton active={tab === "issue"} onClick={() => setTab("issue")}>
               New Reservation
-              {tab === "issue" && (
-                <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-tantra-red" />
-              )}
-            </button>
-            <button
-              onClick={() => setTab("list")}
-              className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${
-                tab === "list" ? "text-default" : "text-muted hover:text-default"
-              }`}
-            >
+            </TabButton>
+            <TabButton active={tab === "list"} onClick={() => setTab("list")}>
               Guest List
               <span className="ml-2 text-tantra-red">({registrations.length})</span>
-              {tab === "list" && (
-                <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-tantra-red" />
-              )}
-            </button>
+            </TabButton>
           </div>
 
           {tab === "issue" && (
-            <div className="max-w-xl">
-              {issueSuccess ? (
-                <div className="bg-card tantra-border-strong p-7 sm:p-9">
-                  <div className="flex items-center justify-center w-16 h-16 rounded-full bg-tantra-red/20 mb-5 mx-auto border-2 border-tantra-red animate-pulse-red">
-                    <svg
-                      className="w-8 h-8 text-tantra-red"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-
-                  <div className="text-center mb-2">
-                    <span className="accent-line"></span>
-                    <span className="label mx-3">CONFIRMED</span>
-                    <span className="accent-line"></span>
-                  </div>
-
-                  <h2 className="display-text text-3xl text-default text-center mb-1">
-                    Reservation Issued
-                  </h2>
-                  <p className="text-sm text-muted text-center mb-6">
-                    <span className="text-default font-semibold">{issueSuccess.clientName}</span>
-                    <span className="mx-2 text-tantra-red">·</span>
-                    {issueSuccess.guestCount}{" "}
-                    {issueSuccess.guestCount === 1 ? "guest" : "guests"}
-                    {issueSuccess.tableNumber && (
-                      <>
-                        <span className="mx-2 text-tantra-red">·</span>
-                        Table {issueSuccess.tableNumber}
-                      </>
-                    )}
-                  </p>
-
-                  <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
-                    <div className="absolute top-0 left-0 w-2 h-2 bg-tantra-red"></div>
-                    <div className="absolute top-0 right-0 w-2 h-2 bg-tantra-red"></div>
-                    <div className="absolute bottom-0 left-0 w-2 h-2 bg-tantra-red"></div>
-                    <div className="absolute bottom-0 right-0 w-2 h-2 bg-tantra-red"></div>
-
-                    {issueSuccess.eventDatetime && (
-                      <div className="mb-4 pb-4 border-b border-[var(--border)]">
-                        <div className="label mb-2">EVENT DATE</div>
-                        <div className="display-text text-default text-lg">
-                          {formatEventDate(issueSuccess.eventDatetime)}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="label mb-3">TICKET NUMBER</div>
-                    <div className="font-mono text-default text-3xl font-black tracking-wider">
-                      {issueSuccess.ticketCode}
-                    </div>
-
-                    {issueSuccess.tableNumber && (
-                      <div className="mt-5 pt-5 border-t border-[var(--border)]">
-                        <div className="label mb-2">TABLE</div>
-                        <div className="display-text text-tantra-red text-2xl">
-                          {issueSuccess.tableNumber.toUpperCase()}
-                        </div>
-                      </div>
-                    )}
-
-                    {issueSuccess.notes && (
-                      <div className="mt-5 pt-5 border-t border-[var(--border)]">
-                        <div className="label mb-2">NOTES</div>
-                        <div className="text-sm text-muted italic">
-                          {issueSuccess.notes}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {issueSuccess.emailSent ? (
-                    <div className="bg-green-500/10 border border-green-500/40 text-green-600 dark:text-green-200 text-sm px-4 py-3 mb-5 flex items-start gap-2">
-                      <span className="font-bold">✓</span>
-                      <span>
-                        Email sent to <strong>{issueSuccess.email}</strong>
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3 mb-5">
-                      ⚠ Saved but email failed: {issueSuccess.emailError}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => setIssueSuccess(null)}
-                    className="btn-red w-full py-4 text-sm"
-                  >
-                    New Reservation
-                  </button>
-                </div>
-              ) : (
-                <form
-                  onSubmit={handleIssueSubmit}
-                  className="bg-card tantra-border-strong p-7 sm:p-9 space-y-5"
-                >
-                  <div className="mb-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="accent-line"></span>
-                      <span className="label">NEW ENTRY</span>
-                    </div>
-                    <h2 className="display-text text-3xl text-default mb-2">Add Guest</h2>
-                    <p className="text-sm text-muted">
-                      Enter client details — they receive one ticket by email.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">EVENT DATE & TIME</label>
-                    <input
-                      type="datetime-local"
-                      value={eventDatetime}
-                      onChange={(e) => setEventDatetime(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">CLIENT NAME</label>
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                      placeholder="Full name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">EMAIL</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                      placeholder="client@example.com"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">PHONE</label>
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                      placeholder="+297 123 4567"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label block mb-3">PARTY SIZE</label>
-                    <div className="flex items-center gap-4 bg-deep tantra-border p-4">
-                      <button
-                        type="button"
-                        onClick={() => setGroupSize(Math.max(1, groupSize - 1))}
-                        className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold"
-                      >
-                        −
-                      </button>
-                      <div className="flex-1 text-center">
-                        <div className="display-text text-5xl text-tantra-red leading-none">
-                          {groupSize}
-                        </div>
-                        <div className="label mt-2">
-                          {groupSize === 1 ? "GUEST" : "GUESTS"}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setGroupSize(Math.min(50, groupSize + 1))}
-                        className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">
-                      TABLE <span className="normal-case tracking-normal text-subtle">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={tableNumber}
-                      onChange={(e) => setTableNumber(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                      placeholder="e.g. 12, VIP-3, Booth A"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">
-                      NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                      placeholder="e.g. Birthday celebration, bottle service"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label block mb-2">
-                      ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={issuedBy}
-                      onChange={(e) => setIssuedBy(e.target.value)}
-                      className="tantra-input w-full px-4 py-3.5"
-                      placeholder="Hostess name"
-                    />
-                  </div>
-
-                  {issueError && (
-                    <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
-                      {issueError}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={issueLoading}
-                    className="btn-red w-full py-4 text-sm"
-                  >
-                    {issueLoading ? "Sending..." : "Issue Ticket & Send Email"}
-                  </button>
-                </form>
-              )}
-            </div>
+            <IssueTab
+              issueSuccess={issueSuccess}
+              setIssueSuccess={setIssueSuccess}
+              fullName={fullName}
+              setFullName={setFullName}
+              email={email}
+              setEmail={setEmail}
+              phone={phone}
+              setPhone={setPhone}
+              groupSize={groupSize}
+              setGroupSize={setGroupSize}
+              tableNumber={tableNumber}
+              setTableNumber={setTableNumber}
+              notes={notes}
+              setNotes={setNotes}
+              issuedBy={issuedBy}
+              setIssuedBy={setIssuedBy}
+              eventDatetime={eventDatetime}
+              setEventDatetime={setEventDatetime}
+              issueError={issueError}
+              issueLoading={issueLoading}
+              onSubmit={handleIssueSubmit}
+            />
           )}
 
           {tab === "list" && (
-            <div>
-              <div className="grid grid-cols-3 gap-3 sm:gap-5 mb-6">
-                <StatCard label="RESERVATIONS" value={registrations.length} />
+            <div className="space-y-6">
+              {/* Date selector */}
+              <DateFilterBar
+                mode={dateMode}
+                setMode={setDateMode}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+                availableDates={availableDates}
+              />
+
+              {/* Stats */}
+              <div className="grid grid-cols-3 gap-3 sm:gap-5">
+                <StatCard label="RESERVATIONS" value={totalReservations} />
                 <StatCard label="CHECKED IN" value={totalCheckedIn} suffix={`of ${totalGuests}`} accent />
                 <StatCard label="PENDING" value={pendingGuests} />
               </div>
 
-              <div className="flex flex-wrap gap-3 mb-4">
+              {/* Search + export */}
+              <div className="flex flex-wrap gap-3">
                 <input
                   type="text"
                   value={search}
@@ -708,160 +489,160 @@ export default function AdminPage() {
                   placeholder="Search name, email, phone, ticket, table..."
                   className="tantra-input flex-1 min-w-[200px] px-4 py-3"
                 />
-                <button
-                  onClick={refreshList}
-                  disabled={listLoading}
-                  className="btn-outline px-5 py-3 text-xs"
-                >
+                <button onClick={refreshList} disabled={listLoading} className="btn-outline px-5 py-3 text-xs">
                   {listLoading ? "..." : "Refresh"}
                 </button>
-                <button onClick={downloadCSV} className="btn-red px-5 py-3 text-xs">
-                  Export CSV
-                </button>
+                <button onClick={downloadCSV} className="btn-red px-5 py-3 text-xs">Export CSV</button>
               </div>
 
-              {/* Filter pills */}
-              <div className="flex gap-2 mb-5 flex-wrap">
-                <FilterPill
-                  active={filter === "all"}
-                  onClick={() => setFilter("all")}
-                  label={`All (${registrations.length})`}
-                />
-                <FilterPill
-                  active={filter === "pending"}
-                  onClick={() => setFilter("pending")}
-                  label={`Pending (${
-                    registrations.filter((r) => !r.tickets[0]?.checked_in).length
-                  })`}
-                />
-                <FilterPill
-                  active={filter === "checked_in"}
-                  onClick={() => setFilter("checked_in")}
-                  label={`Checked In (${
-                    registrations.filter((r) => r.tickets[0]?.checked_in).length
-                  })`}
-                />
+              {/* Status filter pills */}
+              <div className="flex gap-2 flex-wrap">
+                <FilterPill active={filter === "all"} onClick={() => setFilter("all")} label={`All (${dateFilteredRegs.length})`} />
+                <FilterPill active={filter === "pending"} onClick={() => setFilter("pending")} label={`Pending (${dateFilteredRegs.filter((r) => !r.tickets[0]?.checked_in).length})`} />
+                <FilterPill active={filter === "checked_in"} onClick={() => setFilter("checked_in")} label={`Checked In (${dateFilteredRegs.filter((r) => r.tickets[0]?.checked_in).length})`} />
               </div>
 
-              <div className="bg-card tantra-border-strong overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-deep border-b border-tantra-red">
-                      <tr className="text-left">
-                        <th className="px-4 py-4 label">Client</th>
-                        <th className="px-4 py-4 label">Contact</th>
-                        <th className="px-4 py-4 label">Event</th>
-                        <th className="px-4 py-4 label">Party</th>
-                        <th className="px-4 py-4 label">Table</th>
-                        <th className="px-4 py-4 label">Ticket</th>
-                        <th className="px-4 py-4 label text-center">Check-in</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.length === 0 && (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            className="px-4 py-12 text-center text-muted"
-                          >
-                            {registrations.length === 0
-                              ? "No reservations yet."
-                              : "No matches."}
-                          </td>
-                        </tr>
-                      )}
-                      {filtered.map((r) => {
-                        const ticket = r.tickets[0];
-                        const isCheckedIn = ticket?.checked_in ?? false;
-                        const isLoading = ticket
-                          ? checkingIn[ticket.ticket_code]
-                          : false;
-                        return (
-                          <tr
-                            key={r.id}
-                            className={`border-t border-[var(--border)] hover:bg-surface transition ${
-                              isCheckedIn ? "opacity-70" : ""
-                            }`}
-                          >
-                            <td className="px-4 py-3.5">
-                              <div className="font-semibold text-default">
-                                {r.full_name}
-                              </div>
-                              {r.notes && (
-                                <div className="text-xs text-muted mt-1 italic">
-                                  {r.notes}
-                                </div>
-                              )}
-                              {r.issued_by && (
-                                <div className="text-[10px] text-subtle mt-0.5">
-                                  by {r.issued_by}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <div className="text-xs text-muted">{r.email}</div>
-                              <div className="text-xs text-subtle font-mono">
-                                {r.phone}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3.5 text-xs whitespace-nowrap">
-                              {r.event_datetime ? (
-                                <span className="text-default font-semibold">
-                                  {formatEventDate(r.event_datetime)}
-                                </span>
-                              ) : (
-                                <span className="text-subtle">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">
-                                {r.group_size}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5">
-                              {r.table_number ? (
-                                <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">
-                                  {r.table_number}
-                                </span>
-                              ) : (
-                                <span className="text-subtle text-xs">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3.5">
-                              {ticket ? (
-                                <span className="font-mono text-default text-xs font-bold">
-                                  {ticket.ticket_code}
-                                </span>
-                              ) : (
-                                <span className="text-subtle text-xs">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3.5 text-center">
-                              {ticket ? (
-                                <CheckInButton
-                                  checkedIn={isCheckedIn}
-                                  loading={isLoading}
-                                  checkedInAt={ticket.checked_in_at}
-                                  onClick={() =>
-                                    toggleCheckIn(ticket.ticket_code, isCheckedIn)
-                                  }
-                                />
-                              ) : (
-                                <span className="text-subtle text-xs">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              {/* Table */}
+              <GuestTable
+                registrations={searchAndStatusFiltered}
+                totalRegistrations={registrations.length}
+                checkingIn={checkingIn}
+                onToggleCheckIn={toggleCheckIn}
+              />
+
+              {/* Analytics (uses ALL registrations, not the date-filtered set — to show trends across all dates) */}
+              <div className="pt-6 border-t border-[var(--border)]">
+                <AnalyticsPanel registrations={registrations} />
               </div>
             </div>
           )}
         </div>
       </div>
     </main>
+  );
+}
+
+// ===== Sub-components =====
+
+function TabButton({ active, onClick, children }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${
+        active ? "text-default" : "text-muted hover:text-default"
+      }`}
+    >
+      {children}
+      {active && <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-tantra-red" />}
+    </button>
+  );
+}
+
+function DateFilterBar({
+  mode,
+  setMode,
+  selectedDate,
+  setSelectedDate,
+  availableDates,
+}: {
+  mode: DateFilterMode;
+  setMode: (m: DateFilterMode) => void;
+  selectedDate: string;
+  setSelectedDate: (d: string) => void;
+  availableDates: string[];
+}) {
+  function handleQuickPick(key: "tonight" | "today" | "tomorrow" | "upcoming" | "all") {
+    if (key === "all") {
+      setMode("all");
+      return;
+    }
+    if (key === "upcoming") {
+      setMode("upcoming");
+      return;
+    }
+    setMode("specific");
+    if (key === "today") setSelectedDate(getTodayKey());
+    else if (key === "tomorrow") setSelectedDate(getTomorrowKey());
+    else if (key === "tonight") setSelectedDate(getTonightKey());
+  }
+
+  const todayKey = getTodayKey();
+  const tomorrowKey = getTomorrowKey();
+  const tonightKey = getTonightKey();
+
+  return (
+    <div className="bg-card tantra-border-strong p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="label mr-2">SHOWING</div>
+        <QuickBtn active={mode === "specific" && selectedDate === todayKey} onClick={() => handleQuickPick("today")} label="Today" />
+        <QuickBtn active={mode === "specific" && selectedDate === tonightKey && tonightKey !== todayKey} onClick={() => handleQuickPick("tonight")} label="Tonight" />
+        <QuickBtn active={mode === "specific" && selectedDate === tomorrowKey} onClick={() => handleQuickPick("tomorrow")} label="Tomorrow" />
+        <QuickBtn active={mode === "upcoming"} onClick={() => handleQuickPick("upcoming")} label="Upcoming" />
+        <QuickBtn active={mode === "all"} onClick={() => handleQuickPick("all")} label="All Time" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
+        <div className="label">PICK A DATE</div>
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => {
+            setSelectedDate(e.target.value);
+            setMode("specific");
+          }}
+          className="tantra-input px-3 py-2 text-sm"
+        />
+        {availableDates.length > 0 && (
+          <select
+            value={mode === "specific" ? selectedDate : ""}
+            onChange={(e) => {
+              if (e.target.value) {
+                setSelectedDate(e.target.value);
+                setMode("specific");
+              }
+            }}
+            className="tantra-input px-3 py-2 text-sm"
+          >
+            <option value="">— Jump to event night —</option>
+            {availableDates.map((d) => (
+              <option key={d} value={d}>
+                {formatDateKey(d)}
+              </option>
+            ))}
+          </select>
+        )}
+        {mode === "specific" && (
+          <div className="text-sm text-muted">
+            Viewing: <span className="text-default font-semibold">{formatDateKey(selectedDate)}</span>
+          </div>
+        )}
+        {mode === "upcoming" && (
+          <div className="text-sm text-muted">
+            Viewing: <span className="text-default font-semibold">All upcoming reservations</span>
+          </div>
+        )}
+        {mode === "all" && (
+          <div className="text-sm text-muted">
+            Viewing: <span className="text-default font-semibold">All reservations (past + future)</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QuickBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition border ${
+        active
+          ? "bg-tantra-red text-white border-tantra-red"
+          : "bg-transparent text-muted border-[var(--border)] hover:border-tantra-red hover:text-default"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -877,22 +658,12 @@ function StatCard({
   accent?: boolean;
 }) {
   return (
-    <div
-      className={`p-5 sm:p-6 relative overflow-hidden ${
-        accent ? "bg-tantra-red text-white" : "bg-card tantra-border-strong text-default"
-      }`}
-    >
+    <div className={`p-5 sm:p-6 relative overflow-hidden ${accent ? "bg-tantra-red text-white" : "bg-card tantra-border-strong text-default"}`}>
       <div className={`label mb-2 ${accent ? "text-white/80" : ""}`}>{label}</div>
       <div className="flex items-baseline gap-2">
         <div className="display-text text-4xl sm:text-5xl leading-none">{value}</div>
         {suffix && (
-          <div
-            className={`text-xs font-semibold ${
-              accent ? "text-white/70" : "text-muted"
-            }`}
-          >
-            {suffix}
-          </div>
+          <div className={`text-xs font-semibold ${accent ? "text-white/70" : "text-muted"}`}>{suffix}</div>
         )}
       </div>
       {!accent && <div className="absolute top-0 right-0 w-1 h-full bg-tantra-red" />}
@@ -900,15 +671,7 @@ function StatCard({
   );
 }
 
-function FilterPill({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
+function FilterPill({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
     <button
       onClick={onClick}
@@ -920,6 +683,110 @@ function FilterPill({
     >
       {label}
     </button>
+  );
+}
+
+function GuestTable({
+  registrations,
+  totalRegistrations,
+  checkingIn,
+  onToggleCheckIn,
+}: {
+  registrations: Registration[];
+  totalRegistrations: number;
+  checkingIn: Record<string, boolean>;
+  onToggleCheckIn: (code: string, current: boolean) => void;
+}) {
+  return (
+    <div className="bg-card tantra-border-strong overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-deep border-b border-tantra-red">
+            <tr className="text-left">
+              <th className="px-4 py-4 label">Client</th>
+              <th className="px-4 py-4 label">Contact</th>
+              <th className="px-4 py-4 label">Event</th>
+              <th className="px-4 py-4 label">Party</th>
+              <th className="px-4 py-4 label">Table</th>
+              <th className="px-4 py-4 label">Ticket</th>
+              <th className="px-4 py-4 label text-center">Check-in</th>
+            </tr>
+          </thead>
+          <tbody>
+            {registrations.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-12 text-center text-muted">
+                  {totalRegistrations === 0
+                    ? "No reservations yet."
+                    : "No reservations match these filters."}
+                </td>
+              </tr>
+            )}
+            {registrations.map((r) => {
+              const ticket = r.tickets[0];
+              const isCheckedIn = ticket?.checked_in ?? false;
+              const isLoading = ticket ? checkingIn[ticket.ticket_code] : false;
+              return (
+                <tr
+                  key={r.id}
+                  className={`border-t border-[var(--border)] hover:bg-surface transition ${isCheckedIn ? "opacity-70" : ""}`}
+                >
+                  <td className="px-4 py-3.5">
+                    <div className="font-semibold text-default">{r.full_name}</div>
+                    {r.notes && <div className="text-xs text-muted mt-1 italic">{r.notes}</div>}
+                    {r.issued_by && <div className="text-[10px] text-subtle mt-0.5">by {r.issued_by}</div>}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="text-xs text-muted">{r.email}</div>
+                    <div className="text-xs text-subtle font-mono">{r.phone}</div>
+                  </td>
+                  <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                    {r.event_datetime ? (
+                      <span className="text-default font-semibold">{formatEventDate(r.event_datetime)}</span>
+                    ) : (
+                      <span className="text-subtle">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">
+                      {r.group_size}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {r.table_number ? (
+                      <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">
+                        {r.table_number}
+                      </span>
+                    ) : (
+                      <span className="text-subtle text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {ticket ? (
+                      <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span>
+                    ) : (
+                      <span className="text-subtle text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3.5 text-center">
+                    {ticket ? (
+                      <CheckInButton
+                        checkedIn={isCheckedIn}
+                        loading={isLoading}
+                        checkedInAt={ticket.checked_in_at}
+                        onClick={() => onToggleCheckIn(ticket.ticket_code, isCheckedIn)}
+                      />
+                    ) : (
+                      <span className="text-subtle text-xs">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
@@ -950,16 +817,12 @@ function CheckInButton({
         </span>
         {checkedInAt && (
           <span className="text-[9px] opacity-80">
-            {new Date(checkedInAt).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            })}
+            {new Date(checkedInAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           </span>
         )}
       </button>
     );
   }
-
   return (
     <button
       onClick={onClick}
@@ -968,5 +831,181 @@ function CheckInButton({
     >
       {loading ? "..." : "CHECK IN"}
     </button>
+  );
+}
+
+// Issue form as a sub-component for readability
+function IssueTab(props: any) {
+  const {
+    issueSuccess,
+    setIssueSuccess,
+    fullName,
+    setFullName,
+    email,
+    setEmail,
+    phone,
+    setPhone,
+    groupSize,
+    setGroupSize,
+    tableNumber,
+    setTableNumber,
+    notes,
+    setNotes,
+    issuedBy,
+    setIssuedBy,
+    eventDatetime,
+    setEventDatetime,
+    issueError,
+    issueLoading,
+    onSubmit,
+  } = props;
+
+  return (
+    <div className="max-w-xl">
+      {issueSuccess ? (
+        <div className="bg-card tantra-border-strong p-7 sm:p-9">
+          <div className="flex items-center justify-center w-16 h-16 rounded-full bg-tantra-red/20 mb-5 mx-auto border-2 border-tantra-red animate-pulse-red">
+            <svg className="w-8 h-8 text-tantra-red" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <div className="text-center mb-2">
+            <span className="accent-line"></span>
+            <span className="label mx-3">CONFIRMED</span>
+            <span className="accent-line"></span>
+          </div>
+          <h2 className="display-text text-3xl text-default text-center mb-1">Reservation Issued</h2>
+          <p className="text-sm text-muted text-center mb-6">
+            <span className="text-default font-semibold">{issueSuccess.clientName}</span>
+            <span className="mx-2 text-tantra-red">·</span>
+            {issueSuccess.guestCount} {issueSuccess.guestCount === 1 ? "guest" : "guests"}
+            {issueSuccess.tableNumber && (
+              <>
+                <span className="mx-2 text-tantra-red">·</span>
+                Table {issueSuccess.tableNumber}
+              </>
+            )}
+          </p>
+
+          <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
+            <div className="absolute top-0 left-0 w-2 h-2 bg-tantra-red"></div>
+            <div className="absolute top-0 right-0 w-2 h-2 bg-tantra-red"></div>
+            <div className="absolute bottom-0 left-0 w-2 h-2 bg-tantra-red"></div>
+            <div className="absolute bottom-0 right-0 w-2 h-2 bg-tantra-red"></div>
+
+            {issueSuccess.eventDatetime && (
+              <div className="mb-4 pb-4 border-b border-[var(--border)]">
+                <div className="label mb-2">EVENT DATE</div>
+                <div className="display-text text-default text-lg">{formatEventDate(issueSuccess.eventDatetime)}</div>
+              </div>
+            )}
+
+            <div className="label mb-3">TICKET NUMBER</div>
+            <div className="font-mono text-default text-3xl font-black tracking-wider">{issueSuccess.ticketCode}</div>
+
+            {issueSuccess.tableNumber && (
+              <div className="mt-5 pt-5 border-t border-[var(--border)]">
+                <div className="label mb-2">TABLE</div>
+                <div className="display-text text-tantra-red text-2xl">{issueSuccess.tableNumber.toUpperCase()}</div>
+              </div>
+            )}
+
+            {issueSuccess.notes && (
+              <div className="mt-5 pt-5 border-t border-[var(--border)]">
+                <div className="label mb-2">NOTES</div>
+                <div className="text-sm text-muted italic">{issueSuccess.notes}</div>
+              </div>
+            )}
+          </div>
+
+          {issueSuccess.emailSent ? (
+            <div className="bg-green-500/10 border border-green-500/40 text-green-600 dark:text-green-200 text-sm px-4 py-3 mb-5 flex items-start gap-2">
+              <span className="font-bold">✓</span>
+              <span>Email sent to <strong>{issueSuccess.email}</strong></span>
+            </div>
+          ) : (
+            <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3 mb-5">
+              ⚠ Saved but email failed: {issueSuccess.emailError}
+            </div>
+          )}
+
+          <button onClick={() => setIssueSuccess(null)} className="btn-red w-full py-4 text-sm">
+            New Reservation
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} className="bg-card tantra-border-strong p-7 sm:p-9 space-y-5">
+          <div className="mb-1">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="accent-line"></span>
+              <span className="label">NEW ENTRY</span>
+            </div>
+            <h2 className="display-text text-3xl text-default mb-2">Add Guest</h2>
+            <p className="text-sm text-muted">Enter client details — they receive one ticket by email.</p>
+          </div>
+
+          <div>
+            <label className="label block mb-2">EVENT DATE & TIME</label>
+            <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3.5" />
+          </div>
+
+          <div>
+            <label className="label block mb-2">CLIENT NAME</label>
+            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" />
+          </div>
+
+          <div>
+            <label className="label block mb-2">EMAIL</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="client@example.com" />
+          </div>
+
+          <div>
+            <label className="label block mb-2">PHONE</label>
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="+297 123 4567" />
+          </div>
+
+          <div>
+            <label className="label block mb-3">PARTY SIZE</label>
+            <div className="flex items-center gap-4 bg-deep tantra-border p-4">
+              <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">
+                −
+              </button>
+              <div className="flex-1 text-center">
+                <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
+                <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
+              </div>
+              <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">
+                +
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+            <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. 12, VIP-3, Booth A" />
+          </div>
+
+          <div>
+            <label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" />
+          </div>
+
+          <div>
+            <label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+            <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Hostess name" />
+          </div>
+
+          {issueError && (
+            <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
+              {issueError}
+            </div>
+          )}
+
+          <button type="submit" disabled={issueLoading} className="btn-red w-full py-4 text-sm">
+            {issueLoading ? "Sending..." : "Issue Ticket & Send Email"}
+          </button>
+        </form>
+      )}
+    </div>
   );
 }
