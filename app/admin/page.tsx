@@ -43,7 +43,20 @@ type Registration = {
   }[];
 };
 
-type Tab = "issue" | "list";
+type OpenBarSignup = {
+  id: string;
+  full_name: string;
+  email: string;
+  date_of_birth: string;
+  ticket_code: string;
+  event_datetime: string | null;
+  checked_in: boolean;
+  checked_in_at: string | null;
+  email_sent: boolean;
+  created_at: string;
+};
+
+type Tab = "issue" | "list" | "openbar";
 type CheckInFilter = "all" | "pending" | "checked_in";
 type DateFilterMode = "specific" | "all" | "upcoming";
 
@@ -69,18 +82,12 @@ export default function AdminPage() {
   const [issueLoading, setIssueLoading] = useState(false);
   const [issueError, setIssueError] = useState("");
   const [issueSuccess, setIssueSuccess] = useState<{
-    clientName: string;
-    email: string;
-    guestCount: number;
-    ticketCode: string;
-    notes: string | null;
-    tableNumber: string | null;
-    eventDatetime: string | null;
-    emailSent: boolean;
-    emailError: string | null;
+    clientName: string; email: string; guestCount: number; ticketCode: string;
+    notes: string | null; tableNumber: string | null; eventDatetime: string | null;
+    emailSent: boolean; emailError: string | null;
   } | null>(null);
 
-  // List
+  // Reservations list
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -89,17 +96,24 @@ export default function AdminPage() {
   const [selectedDate, setSelectedDate] = useState<string>(getTodayKey());
   const [checkingIn, setCheckingIn] = useState<Record<string, boolean>>({});
 
-  // Edit / delete modals
+  // Open Bar
+  const [openBarSignups, setOpenBarSignups] = useState<OpenBarSignup[]>([]);
+  const [openBarLoading, setOpenBarLoading] = useState(false);
+  const [openBarSearch, setOpenBarSearch] = useState("");
+  const [openBarFilter, setOpenBarFilter] = useState<CheckInFilter>("all");
+  const [openBarCheckingIn, setOpenBarCheckingIn] = useState<Record<string, boolean>>({});
+
+  // Modals
   const [editingReservation, setEditingReservation] = useState<Registration | null>(null);
   const [deletingReservation, setDeletingReservation] = useState<Registration | null>(null);
+  const [deletingOpenBar, setDeletingOpenBar] = useState<OpenBarSignup | null>(null);
 
   useEffect(() => {
     if (!eventDatetime) setEventDatetime(getDefaultEventDatetime());
   }, []);
 
   useEffect(() => {
-    const saved =
-      typeof window !== "undefined" ? sessionStorage.getItem("tantra_admin_pw") : null;
+    const saved = typeof window !== "undefined" ? sessionStorage.getItem("tantra_admin_pw") : null;
     if (saved) {
       setPassword(saved);
       checkAuth(saved);
@@ -110,9 +124,7 @@ export default function AdminPage() {
     setAuthLoading(true);
     setAuthError("");
     try {
-      const res = await fetch("/api/admin/export?list=1", {
-        headers: { "x-admin-password": pw },
-      });
+      const res = await fetch("/api/admin/export?list=1", { headers: { "x-admin-password": pw } });
       if (res.status === 401) {
         setAuthError("Incorrect password");
         sessionStorage.removeItem("tantra_admin_pw");
@@ -122,6 +134,7 @@ export default function AdminPage() {
       if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
       setRegistrations(data.registrations || []);
+      await loadOpenBar(pw);
       setAuthed(true);
       sessionStorage.setItem("tantra_admin_pw", pw);
 
@@ -134,12 +147,24 @@ export default function AdminPage() {
     }
   }
 
+  async function loadOpenBar(pw?: string) {
+    const useP = pw || password;
+    setOpenBarLoading(true);
+    try {
+      const res = await fetch("/api/open-bar-list", { headers: { "x-admin-password": useP } });
+      if (res.ok) {
+        const data = await res.json();
+        setOpenBarSignups(data.signups || []);
+      }
+    } finally {
+      setOpenBarLoading(false);
+    }
+  }
+
   async function refreshList() {
     setListLoading(true);
     try {
-      const res = await fetch("/api/admin/export?list=1", {
-        headers: { "x-admin-password": password },
-      });
+      const res = await fetch("/api/admin/export?list=1", { headers: { "x-admin-password": password } });
       if (res.ok) {
         const data = await res.json();
         setRegistrations(data.registrations || []);
@@ -160,6 +185,7 @@ export default function AdminPage() {
     setAuthed(false);
     setPassword("");
     setRegistrations([]);
+    setOpenBarSignups([]);
   }
 
   function downloadCSV() {
@@ -173,11 +199,7 @@ export default function AdminPage() {
         ...r,
         tickets: r.tickets.map((t) =>
           t.ticket_code === ticketCode
-            ? {
-                ...t,
-                checked_in: next,
-                checked_in_at: next ? new Date().toISOString() : null,
-              }
+            ? { ...t, checked_in: next, checked_in_at: next ? new Date().toISOString() : null }
             : t
         ),
       }))
@@ -187,10 +209,7 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/check-in", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-password": password,
-        },
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
         body: JSON.stringify({ ticket_code: ticketCode, checked_in: next }),
       });
       if (!res.ok) {
@@ -218,36 +237,59 @@ export default function AdminPage() {
     }
   }
 
+  async function toggleOpenBarCheckIn(ticketCode: string, currentStatus: boolean) {
+    const next = !currentStatus;
+    setOpenBarSignups((prev) =>
+      prev.map((s) =>
+        s.ticket_code === ticketCode
+          ? { ...s, checked_in: next, checked_in_at: next ? new Date().toISOString() : null }
+          : s
+      )
+    );
+    setOpenBarCheckingIn((m) => ({ ...m, [ticketCode]: true }));
+
+    try {
+      const res = await fetch("/api/open-bar-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ ticket_code: ticketCode, checked_in: next }),
+      });
+      if (!res.ok) {
+        setOpenBarSignups((prev) =>
+          prev.map((s) =>
+            s.ticket_code === ticketCode
+              ? { ...s, checked_in: currentStatus, checked_in_at: currentStatus ? s.checked_in_at : null }
+              : s
+          )
+        );
+        alert("Failed to update check-in");
+      }
+    } catch (err) {
+      alert("Network error");
+    } finally {
+      setOpenBarCheckingIn((m) => {
+        const next = { ...m };
+        delete next[ticketCode];
+        return next;
+      });
+    }
+  }
+
   async function handleIssueSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIssueError("");
     setIssueSuccess(null);
 
-    if (fullName.trim().length < 2) {
-      setIssueError("Please enter the client's full name");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setIssueError("Please enter a valid email address");
-      return;
-    }
-    if (!isValidPhone(phone)) {
-      setIssueError("Please enter a valid phone number");
-      return;
-    }
-    if (groupSize < 1 || groupSize > 50) {
-      setIssueError("Party size must be between 1 and 50");
-      return;
-    }
+    if (fullName.trim().length < 2) { setIssueError("Please enter the client's full name"); return; }
+    if (!isValidEmail(email)) { setIssueError("Please enter a valid email address"); return; }
+    if (!isValidPhone(phone)) { setIssueError("Please enter a valid phone number"); return; }
+    if (groupSize < 1 || groupSize > 50) { setIssueError("Party size must be between 1 and 50"); return; }
 
     setIssueLoading(true);
     try {
       const res = await fetch("/api/issue-tickets", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-password": password,
-        },
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
         body: JSON.stringify({
           full_name: fullName.trim(),
           phone: normalizePhone(phone),
@@ -259,33 +301,18 @@ export default function AdminPage() {
           issued_by: issuedBy.trim() || null,
         }),
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
 
-      if (issuedBy.trim()) {
-        sessionStorage.setItem("tantra_hostess_name", issuedBy.trim());
-      }
+      if (issuedBy.trim()) sessionStorage.setItem("tantra_hostess_name", issuedBy.trim());
 
       setIssueSuccess({
-        clientName: data.client_name,
-        email: data.email,
-        guestCount: data.guest_count,
-        ticketCode: data.ticket_code,
-        notes: data.notes,
-        tableNumber: data.table_number,
-        eventDatetime: data.event_datetime,
-        emailSent: data.email_sent,
-        emailError: data.email_error,
+        clientName: data.client_name, email: data.email, guestCount: data.guest_count,
+        ticketCode: data.ticket_code, notes: data.notes, tableNumber: data.table_number,
+        eventDatetime: data.event_datetime, emailSent: data.email_sent, emailError: data.email_error,
       });
 
-      setFullName("");
-      setPhone("");
-      setEmail("");
-      setGroupSize(1);
-      setNotes("");
-      setTableNumber("");
-
+      setFullName(""); setPhone(""); setEmail(""); setGroupSize(1); setNotes(""); setTableNumber("");
       refreshList();
     } catch (err: any) {
       setIssueError(err.message || "Failed to issue ticket");
@@ -294,6 +321,7 @@ export default function AdminPage() {
     }
   }
 
+  // ====== Filter reservations ======
   const { availableDates, dateFilteredRegs } = useMemo(() => {
     const dateSet = new Set<string>();
     for (const r of registrations) {
@@ -305,18 +333,12 @@ export default function AdminPage() {
     const availableDates = Array.from(dateSet).sort().reverse();
 
     let filtered = registrations;
-
     if (dateMode === "specific" && selectedDate) {
-      filtered = registrations.filter(
-        (r) => r.event_datetime && isoToDateKey(r.event_datetime) === selectedDate
-      );
+      filtered = registrations.filter((r) => r.event_datetime && isoToDateKey(r.event_datetime) === selectedDate);
     } else if (dateMode === "upcoming") {
       const today = getTodayKey();
-      filtered = registrations.filter(
-        (r) => r.event_datetime && isoToDateKey(r.event_datetime) >= today
-      );
+      filtered = registrations.filter((r) => r.event_datetime && isoToDateKey(r.event_datetime) >= today);
     }
-
     return { availableDates, dateFilteredRegs: filtered };
   }, [registrations, dateMode, selectedDate]);
 
@@ -324,7 +346,6 @@ export default function AdminPage() {
     const ticket = r.tickets[0];
     if (filter === "pending" && ticket?.checked_in) return false;
     if (filter === "checked_in" && !ticket?.checked_in) return false;
-
     if (!search.trim()) return true;
     const s = search.toLowerCase();
     return (
@@ -336,13 +357,27 @@ export default function AdminPage() {
     );
   });
 
+  // ====== Filter open bar ======
+  const openBarFiltered = openBarSignups.filter((s) => {
+    if (openBarFilter === "pending" && s.checked_in) return false;
+    if (openBarFilter === "checked_in" && !s.checked_in) return false;
+    if (!openBarSearch.trim()) return true;
+    const q = openBarSearch.toLowerCase();
+    return (
+      s.full_name.toLowerCase().includes(q) ||
+      s.email.toLowerCase().includes(q) ||
+      s.ticket_code.toLowerCase().includes(q)
+    );
+  });
+
   const totalReservations = dateFilteredRegs.length;
   const totalGuests = dateFilteredRegs.reduce((sum, r) => sum + r.group_size, 0);
-  const totalCheckedIn = dateFilteredRegs.reduce(
-    (sum, r) => sum + (r.tickets[0]?.checked_in ? r.group_size : 0),
-    0
-  );
+  const totalCheckedIn = dateFilteredRegs.reduce((sum, r) => sum + (r.tickets[0]?.checked_in ? r.group_size : 0), 0);
   const pendingGuests = totalGuests - totalCheckedIn;
+
+  const obTotal = openBarSignups.length;
+  const obCheckedIn = openBarSignups.filter((s) => s.checked_in).length;
+  const obPending = obTotal - obCheckedIn;
 
   const logoUrl = theme === "dark" ? LOGO_DARK : LOGO_LIGHT;
 
@@ -369,20 +404,14 @@ export default function AdminPage() {
           <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-tantra-red opacity-[0.08] blur-[120px] rounded-full" />
         </div>
         <form onSubmit={handleLogin} className="w-full max-w-sm bg-card tantra-border-strong p-10 relative z-10">
-          <div className="flex justify-center mb-8">
-            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" />
-          </div>
+          <div className="flex justify-center mb-8"><img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" /></div>
           <div className="flex items-center justify-center gap-3 mb-2">
-            <span className="accent-line"></span>
-            <span className="label">STAFF ACCESS</span>
-            <span className="accent-line"></span>
+            <span className="accent-line"></span><span className="label">STAFF ACCESS</span><span className="accent-line"></span>
           </div>
           <p className="text-muted text-sm text-center mb-7">Enter password to continue</p>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="tantra-input w-full px-4 py-3.5 mb-4" placeholder="Password" autoFocus />
           {authError && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3 mb-4">{authError}</div>}
-          <button type="submit" disabled={authLoading} className="btn-red w-full py-4 text-sm">
-            {authLoading ? "Checking..." : "Sign In"}
-          </button>
+          <button type="submit" disabled={authLoading} className="btn-red w-full py-4 text-sm">{authLoading ? "Checking..." : "Sign In"}</button>
         </form>
       </main>
     );
@@ -394,7 +423,6 @@ export default function AdminPage() {
 
       <div className="relative z-10 px-4 py-6 sm:py-8">
         <div className="max-w-6xl mx-auto">
-          {/* Header */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-[var(--border)]">
             <div className="flex items-center gap-4">
               <img src={logoUrl} alt="Tantra" className="h-12 w-auto object-contain" />
@@ -415,18 +443,19 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex gap-8 mb-8 border-b border-[var(--border)]">
+          <div className="flex gap-8 mb-8 border-b border-[var(--border)] overflow-x-auto">
             <TabButton active={tab === "issue"} onClick={() => setTab("issue")}>New Reservation</TabButton>
             <TabButton active={tab === "list"} onClick={() => setTab("list")}>
               Guest List<span className="ml-2 text-tantra-red">({registrations.length})</span>
+            </TabButton>
+            <TabButton active={tab === "openbar"} onClick={() => setTab("openbar")}>
+              Open Bar<span className="ml-2 text-tantra-red">({openBarSignups.length})</span>
             </TabButton>
           </div>
 
           {tab === "issue" && (
             <IssueTab
-              issueSuccess={issueSuccess}
-              setIssueSuccess={setIssueSuccess}
+              issueSuccess={issueSuccess} setIssueSuccess={setIssueSuccess}
               fullName={fullName} setFullName={setFullName}
               email={email} setEmail={setEmail}
               phone={phone} setPhone={setPhone}
@@ -442,34 +471,22 @@ export default function AdminPage() {
 
           {tab === "list" && (
             <div className="space-y-6">
-              <DateFilterBar
-                mode={dateMode} setMode={setDateMode}
-                selectedDate={selectedDate} setSelectedDate={setSelectedDate}
-                availableDates={availableDates}
-              />
-
+              <DateFilterBar mode={dateMode} setMode={setDateMode} selectedDate={selectedDate} setSelectedDate={setSelectedDate} availableDates={availableDates} />
               <div className="grid grid-cols-3 gap-3 sm:gap-5">
                 <StatCard label="RESERVATIONS" value={totalReservations} />
                 <StatCard label="CHECKED IN" value={totalCheckedIn} suffix={`of ${totalGuests}`} accent />
                 <StatCard label="PENDING" value={pendingGuests} />
               </div>
-
               <div className="flex flex-wrap gap-3">
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name, email, phone, ticket, table..."
-                  className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
-                <button onClick={refreshList} disabled={listLoading} className="btn-outline px-5 py-3 text-xs">
-                  {listLoading ? "..." : "Refresh"}
-                </button>
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, phone, ticket, table..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
+                <button onClick={refreshList} disabled={listLoading} className="btn-outline px-5 py-3 text-xs">{listLoading ? "..." : "Refresh"}</button>
                 <button onClick={downloadCSV} className="btn-red px-5 py-3 text-xs">Export CSV</button>
               </div>
-
               <div className="flex gap-2 flex-wrap">
                 <FilterPill active={filter === "all"} onClick={() => setFilter("all")} label={`All (${dateFilteredRegs.length})`} />
                 <FilterPill active={filter === "pending"} onClick={() => setFilter("pending")} label={`Pending (${dateFilteredRegs.filter((r) => !r.tickets[0]?.checked_in).length})`} />
                 <FilterPill active={filter === "checked_in"} onClick={() => setFilter("checked_in")} label={`Checked In (${dateFilteredRegs.filter((r) => r.tickets[0]?.checked_in).length})`} />
               </div>
-
               <GuestTable
                 registrations={searchAndStatusFiltered}
                 totalRegistrations={registrations.length}
@@ -478,35 +495,76 @@ export default function AdminPage() {
                 onEdit={(r) => setEditingReservation(r)}
                 onDelete={(r) => setDeletingReservation(r)}
               />
-
               <div className="pt-6 border-t border-[var(--border)]">
                 <AnalyticsPanel registrations={registrations} />
               </div>
             </div>
           )}
+
+          {tab === "openbar" && (
+            <div className="space-y-6">
+              <div className="bg-card tantra-border-strong p-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="accent-line"></span>
+                  <span className="label">OPEN BAR PASS SIGNUPS</span>
+                </div>
+                <p className="text-sm text-muted">
+                  Public signups via <a href="/signup" target="_blank" className="text-tantra-red underline">/signup</a> — free Open Bar Pass valid Fri & Sat, 9:30–11:30 PM.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 sm:gap-5">
+                <StatCard label="TOTAL SIGNUPS" value={obTotal} />
+                <StatCard label="REDEEMED" value={obCheckedIn} accent />
+                <StatCard label="PENDING" value={obPending} />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <input type="text" value={openBarSearch} onChange={(e) => setOpenBarSearch(e.target.value)} placeholder="Search name, email, pass number..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
+                <button onClick={() => loadOpenBar()} disabled={openBarLoading} className="btn-outline px-5 py-3 text-xs">
+                  {openBarLoading ? "..." : "Refresh"}
+                </button>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                <FilterPill active={openBarFilter === "all"} onClick={() => setOpenBarFilter("all")} label={`All (${openBarSignups.length})`} />
+                <FilterPill active={openBarFilter === "pending"} onClick={() => setOpenBarFilter("pending")} label={`Pending (${openBarSignups.filter((s) => !s.checked_in).length})`} />
+                <FilterPill active={openBarFilter === "checked_in"} onClick={() => setOpenBarFilter("checked_in")} label={`Redeemed (${openBarSignups.filter((s) => s.checked_in).length})`} />
+              </div>
+
+              <OpenBarTable
+                signups={openBarFiltered}
+                totalSignups={openBarSignups.length}
+                checkingIn={openBarCheckingIn}
+                onToggleCheckIn={toggleOpenBarCheckIn}
+                onDelete={(s) => setDeletingOpenBar(s)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Modals */}
       {editingReservation && (
         <EditModal
           reservation={editingReservation}
           onClose={() => setEditingReservation(null)}
-          onSaved={() => {
-            setEditingReservation(null);
-            refreshList();
-          }}
+          onSaved={() => { setEditingReservation(null); refreshList(); }}
           password={password}
         />
       )}
       {deletingReservation && (
-        <DeleteModal
+        <DeleteReservationModal
           reservation={deletingReservation}
           onClose={() => setDeletingReservation(null)}
-          onDeleted={() => {
-            setDeletingReservation(null);
-            refreshList();
-          }}
+          onDeleted={() => { setDeletingReservation(null); refreshList(); }}
+          password={password}
+        />
+      )}
+      {deletingOpenBar && (
+        <DeleteOpenBarModal
+          signup={deletingOpenBar}
+          onClose={() => setDeletingOpenBar(null)}
+          onDeleted={() => { setDeletingOpenBar(null); loadOpenBar(); }}
           password={password}
         />
       )}
@@ -514,24 +572,18 @@ export default function AdminPage() {
   );
 }
 
-// ===== Sub-components =====
+// ======= Sub-components =======
 
 function TabButton({ active, onClick, children }: any) {
   return (
-    <button onClick={onClick} className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${active ? "text-default" : "text-muted hover:text-default"}`}>
+    <button onClick={onClick} className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative whitespace-nowrap ${active ? "text-default" : "text-muted hover:text-default"}`}>
       {children}
       {active && <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-tantra-red" />}
     </button>
   );
 }
 
-function DateFilterBar({
-  mode, setMode, selectedDate, setSelectedDate, availableDates,
-}: {
-  mode: DateFilterMode; setMode: (m: DateFilterMode) => void;
-  selectedDate: string; setSelectedDate: (d: string) => void;
-  availableDates: string[];
-}) {
+function DateFilterBar({ mode, setMode, selectedDate, setSelectedDate, availableDates }: any) {
   function handleQuickPick(key: "tonight" | "today" | "tomorrow" | "upcoming" | "all") {
     if (key === "all") { setMode("all"); return; }
     if (key === "upcoming") { setMode("upcoming"); return; }
@@ -540,7 +592,6 @@ function DateFilterBar({
     else if (key === "tomorrow") setSelectedDate(getTomorrowKey());
     else if (key === "tonight") setSelectedDate(getTonightKey());
   }
-
   const todayKey = getTodayKey();
   const tomorrowKey = getTomorrowKey();
   const tonightKey = getTonightKey();
@@ -555,25 +606,18 @@ function DateFilterBar({
         <QuickBtn active={mode === "upcoming"} onClick={() => handleQuickPick("upcoming")} label="Upcoming" />
         <QuickBtn active={mode === "all"} onClick={() => handleQuickPick("all")} label="All Time" />
       </div>
-
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
         <div className="label">PICK A DATE</div>
-        <input type="date" value={selectedDate}
-          onChange={(e) => { setSelectedDate(e.target.value); setMode("specific"); }}
-          className="tantra-input px-3 py-2 text-sm" />
+        <input type="date" value={selectedDate} onChange={(e) => { setSelectedDate(e.target.value); setMode("specific"); }} className="tantra-input px-3 py-2 text-sm" />
         {availableDates.length > 0 && (
-          <select
-            value={mode === "specific" ? selectedDate : ""}
-            onChange={(e) => { if (e.target.value) { setSelectedDate(e.target.value); setMode("specific"); } }}
-            className="tantra-input px-3 py-2 text-sm"
-          >
+          <select value={mode === "specific" ? selectedDate : ""} onChange={(e) => { if (e.target.value) { setSelectedDate(e.target.value); setMode("specific"); } }} className="tantra-input px-3 py-2 text-sm">
             <option value="">— Jump to event night —</option>
-            {availableDates.map((d) => <option key={d} value={d}>{formatDateKey(d)}</option>)}
+            {availableDates.map((d: string) => <option key={d} value={d}>{formatDateKey(d)}</option>)}
           </select>
         )}
         {mode === "specific" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">{formatDateKey(selectedDate)}</span></div>}
-        {mode === "upcoming" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">All upcoming reservations</span></div>}
-        {mode === "all" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">All reservations (past + future)</span></div>}
+        {mode === "upcoming" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">All upcoming</span></div>}
+        {mode === "all" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">All reservations</span></div>}
       </div>
     </div>
   );
@@ -608,16 +652,7 @@ function FilterPill({ active, onClick, label }: { active: boolean; onClick: () =
   );
 }
 
-function GuestTable({
-  registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete,
-}: {
-  registrations: Registration[];
-  totalRegistrations: number;
-  checkingIn: Record<string, boolean>;
-  onToggleCheckIn: (code: string, current: boolean) => void;
-  onEdit: (r: Registration) => void;
-  onDelete: (r: Registration) => void;
-}) {
+function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete }: any) {
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
       <div className="overflow-x-auto">
@@ -636,13 +671,11 @@ function GuestTable({
           </thead>
           <tbody>
             {registrations.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-muted">
-                  {totalRegistrations === 0 ? "No reservations yet." : "No reservations match these filters."}
-                </td>
-              </tr>
+              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted">
+                {totalRegistrations === 0 ? "No reservations yet." : "No reservations match these filters."}
+              </td></tr>
             )}
-            {registrations.map((r) => {
+            {registrations.map((r: Registration) => {
               const ticket = r.tickets[0];
               const isCheckedIn = ticket?.checked_in ?? false;
               const isLoading = ticket ? checkingIn[ticket.ticket_code] : false;
@@ -660,9 +693,7 @@ function GuestTable({
                   <td className="px-4 py-3.5 text-xs whitespace-nowrap">
                     {r.event_datetime ? <span className="text-default font-semibold">{formatEventDate(r.event_datetime)}</span> : <span className="text-subtle">—</span>}
                   </td>
-                  <td className="px-4 py-3.5">
-                    <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span>
-                  </td>
+                  <td className="px-4 py-3.5"><span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span></td>
                   <td className="px-4 py-3.5">
                     {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
@@ -670,31 +701,16 @@ function GuestTable({
                     {ticket ? <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-4 py-3.5 text-center">
-                    {ticket ? (
-                      <CheckInButton
-                        checkedIn={isCheckedIn}
-                        loading={isLoading}
-                        checkedInAt={ticket.checked_in_at}
-                        onClick={() => onToggleCheckIn(ticket.ticket_code, isCheckedIn)}
-                      />
-                    ) : <span className="text-subtle text-xs">—</span>}
+                    {ticket ? <CheckInButton checkedIn={isCheckedIn} loading={isLoading} checkedInAt={ticket.checked_in_at} onClick={() => onToggleCheckIn(ticket.ticket_code, isCheckedIn)} /> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-4 py-3.5 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={() => onEdit(r)}
-                        className="btn-icon w-8 h-8 flex items-center justify-center"
-                        title="Edit reservation"
-                      >
+                      <button onClick={() => onEdit(r)} className="btn-icon w-8 h-8 flex items-center justify-center" title="Edit">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                       </button>
-                      <button
-                        onClick={() => onDelete(r)}
-                        className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition"
-                        title="Delete reservation"
-                      >
+                      <button onClick={() => onDelete(r)} className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition" title="Delete">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
@@ -709,6 +725,82 @@ function GuestTable({
       </div>
     </div>
   );
+}
+
+function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDelete }: {
+  signups: OpenBarSignup[]; totalSignups: number;
+  checkingIn: Record<string, boolean>;
+  onToggleCheckIn: (code: string, current: boolean) => void;
+  onDelete: (s: OpenBarSignup) => void;
+}) {
+  return (
+    <div className="bg-card tantra-border-strong overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-deep border-b border-tantra-red">
+            <tr className="text-left">
+              <th className="px-4 py-4 label">Guest</th>
+              <th className="px-4 py-4 label">Email</th>
+              <th className="px-4 py-4 label">Age</th>
+              <th className="px-4 py-4 label">Event Night</th>
+              <th className="px-4 py-4 label">Pass</th>
+              <th className="px-4 py-4 label">Signed Up</th>
+              <th className="px-4 py-4 label text-center">Status</th>
+              <th className="px-4 py-4 label text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {signups.length === 0 && (
+              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted">
+                {totalSignups === 0 ? "No Open Bar signups yet. Share /signup to start." : "No signups match these filters."}
+              </td></tr>
+            )}
+            {signups.map((s) => {
+              const age = calculateAgeYears(s.date_of_birth);
+              const isLoading = checkingIn[s.ticket_code];
+              return (
+                <tr key={s.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${s.checked_in ? "opacity-70" : ""}`}>
+                  <td className="px-4 py-3.5"><div className="font-semibold text-default">{s.full_name}</div></td>
+                  <td className="px-4 py-3.5"><div className="text-xs text-muted">{s.email}</div></td>
+                  <td className="px-4 py-3.5"><div className="text-xs text-default font-bold">{age}</div></td>
+                  <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                    {s.event_datetime ? <span className="text-default font-semibold">{formatEventDate(s.event_datetime)}</span> : <span className="text-subtle">—</span>}
+                  </td>
+                  <td className="px-4 py-3.5"><span className="font-mono text-default text-xs font-bold">{s.ticket_code}</span></td>
+                  <td className="px-4 py-3.5 text-xs text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3.5 text-center">
+                    <CheckInButton
+                      checkedIn={s.checked_in}
+                      loading={isLoading}
+                      checkedInAt={s.checked_in_at}
+                      onClick={() => onToggleCheckIn(s.ticket_code, s.checked_in)}
+                    />
+                  </td>
+                  <td className="px-4 py-3.5 text-center">
+                    <button onClick={() => onDelete(s)} className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition" title="Delete">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function calculateAgeYears(dob: string): number {
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return 0;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
+  return age;
 }
 
 function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
@@ -734,14 +826,7 @@ function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn
 
 // ============ EDIT MODAL ============
 
-function EditModal({
-  reservation, onClose, onSaved, password,
-}: {
-  reservation: Registration;
-  onClose: () => void;
-  onSaved: () => void;
-  password: string;
-}) {
+function EditModal({ reservation, onClose, onSaved, password }: any) {
   const [fullName, setFullName] = useState(reservation.full_name);
   const [email, setEmail] = useState(reservation.email);
   const [phone, setPhone] = useState(reservation.phone);
@@ -759,7 +844,6 @@ function EditModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-
     if (fullName.trim().length < 2) { setError("Invalid client name"); return; }
     if (!isValidEmail(email)) { setError("Invalid email"); return; }
     if (!isValidPhone(phone)) { setError("Invalid phone"); return; }
@@ -785,11 +869,9 @@ function EditModal({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
-
       if (sendEmail && !data.email_sent) {
         alert(`Reservation updated, but email failed: ${data.email_error || "unknown error"}`);
       }
-
       onSaved();
     } catch (err: any) {
       setError(err.message || "Failed to update");
@@ -803,129 +885,67 @@ function EditModal({
       <form onSubmit={handleSubmit} className="p-7 space-y-4">
         <div>
           <div className="flex items-center gap-3 mb-3">
-            <span className="accent-line"></span>
-            <span className="label">EDIT RESERVATION</span>
+            <span className="accent-line"></span><span className="label">EDIT RESERVATION</span>
           </div>
           <h2 className="display-text text-2xl text-default mb-1">{reservation.full_name}</h2>
-          <p className="text-xs text-muted font-mono">
-            {reservation.tickets[0]?.ticket_code}
-          </p>
+          <p className="text-xs text-muted font-mono">{reservation.tickets[0]?.ticket_code}</p>
         </div>
-
-        <div>
-          <label className="label block mb-2">EVENT DATE & TIME</label>
-          <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)}
-            className="tantra-input w-full px-4 py-3" />
-        </div>
-
-        <div>
-          <label className="label block mb-2">CLIENT NAME</label>
-          <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
-            className="tantra-input w-full px-4 py-3" />
-        </div>
-
-        <div>
-          <label className="label block mb-2">EMAIL</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            className="tantra-input w-full px-4 py-3" />
-        </div>
-
-        <div>
-          <label className="label block mb-2">PHONE</label>
-          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-            className="tantra-input w-full px-4 py-3" />
-        </div>
-
+        <div><label className="label block mb-2">EVENT DATE & TIME</label>
+          <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
+        <div><label className="label block mb-2">CLIENT NAME</label>
+          <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
+        <div><label className="label block mb-2">EMAIL</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
+        <div><label className="label block mb-2">PHONE</label>
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
         <div>
           <label className="label block mb-2">PARTY SIZE</label>
           <div className="flex items-center gap-3 bg-deep tantra-border p-3">
-            <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))}
-              className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">−</button>
+            <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">−</button>
             <div className="flex-1 text-center">
               <div className="display-text text-3xl text-tantra-red leading-none">{groupSize}</div>
               <div className="label mt-1">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
             </div>
-            <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))}
-              className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
+            <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
           </div>
         </div>
-
-        <div>
-          <label className="label block mb-2">TABLE</label>
-          <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)}
-            className="tantra-input w-full px-4 py-3" placeholder="e.g. 12, VIP-3, Booth A" />
-        </div>
-
-        <div>
-          <label className="label block mb-2">NOTES</label>
-          <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
-            className="tantra-input w-full px-4 py-3" placeholder="Birthday, bottle service, etc." />
-        </div>
-
-        <div>
-          <label className="label block mb-2">ISSUED BY</label>
-          <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)}
-            className="tantra-input w-full px-4 py-3" placeholder="Hostess name" />
-        </div>
-
-        {/* Send-email checkbox */}
+        <div><label className="label block mb-2">TABLE</label>
+          <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
+        <div><label className="label block mb-2">NOTES</label>
+          <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
+        <div><label className="label block mb-2">ISSUED BY</label>
+          <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3" /></div>
         <label className="flex items-center gap-3 cursor-pointer bg-surface tantra-border p-3 hover:border-tantra-red transition">
-          <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)}
-            className="w-4 h-4 accent-tantra-red" />
+          <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="w-4 h-4 accent-tantra-red" />
           <div className="flex-1">
             <div className="text-sm font-bold text-default">Send updated ticket</div>
             <div className="text-xs text-muted">Re-sends the ticket email with the new details and PDF</div>
           </div>
         </label>
-
-        {error && (
-          <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
-            {error}
-          </div>
-        )}
-
+        {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{error}</div>}
         <div className="flex gap-3 pt-2">
-          <button type="button" onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={saving}>
-            Cancel
-          </button>
-          <button type="submit" disabled={saving} className="btn-red flex-1 py-3 text-xs">
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+          <button type="button" onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={saving}>Cancel</button>
+          <button type="submit" disabled={saving} className="btn-red flex-1 py-3 text-xs">{saving ? "Saving..." : "Save Changes"}</button>
         </div>
       </form>
     </Modal>
   );
 }
 
-// ============ DELETE MODAL ============
-
-function DeleteModal({
-  reservation, onClose, onDeleted, password,
-}: {
-  reservation: Registration;
-  onClose: () => void;
-  onDeleted: () => void;
-  password: string;
-}) {
+function DeleteReservationModal({ reservation, onClose, onDeleted, password }: any) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
   async function handleDelete() {
     setError("");
-    if (!confirmPassword) {
-      setError("Please re-enter your password to confirm");
-      return;
-    }
+    if (!confirmPassword) { setError("Please re-enter your password to confirm"); return; }
     setDeleting(true);
     try {
       const res = await fetch("/api/reservations", {
         method: "DELETE",
         headers: { "Content-Type": "application/json", "x-admin-password": password },
-        body: JSON.stringify({
-          id: reservation.id,
-          confirm_password: confirmPassword,
-        }),
+        body: JSON.stringify({ id: reservation.id, confirm_password: confirmPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed");
@@ -941,21 +961,13 @@ function DeleteModal({
     <Modal onClose={onClose}>
       <div className="p-7 space-y-5">
         <div>
-          <div className="flex items-center gap-3 mb-3">
-            <span className="accent-line"></span>
-            <span className="label text-tantra-red">DELETE RESERVATION</span>
-          </div>
+          <div className="flex items-center gap-3 mb-3"><span className="accent-line"></span><span className="label text-tantra-red">DELETE RESERVATION</span></div>
           <h2 className="display-text text-2xl text-default mb-2">Are you sure?</h2>
           <p className="text-sm text-muted">
-            This will permanently delete the reservation and ticket for{" "}
-            <span className="text-default font-bold">{reservation.full_name}</span>
-            {reservation.event_datetime && (
-              <> on <span className="text-default font-bold">{formatEventDate(reservation.event_datetime)}</span></>
-            )}
-            . This cannot be undone.
+            This will permanently delete the reservation and ticket for <span className="text-default font-bold">{reservation.full_name}</span>
+            {reservation.event_datetime && <> on <span className="text-default font-bold">{formatEventDate(reservation.event_datetime)}</span></>}. This cannot be undone.
           </p>
         </div>
-
         <div className="bg-deep tantra-border p-4">
           <div className="label mb-2">RESERVATION DETAILS</div>
           <div className="text-sm text-default space-y-1">
@@ -965,34 +977,14 @@ function DeleteModal({
             <div><span className="text-muted">Ticket:</span> <span className="font-mono">{reservation.tickets[0]?.ticket_code}</span></div>
           </div>
         </div>
-
         <div>
           <label className="label block mb-2 text-tantra-red">RE-ENTER YOUR PASSWORD TO CONFIRM</label>
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="tantra-input w-full px-4 py-3"
-            placeholder="Password"
-            autoFocus
-          />
+          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="tantra-input w-full px-4 py-3" placeholder="Password" autoFocus />
         </div>
-
-        {error && (
-          <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
-            {error}
-          </div>
-        )}
-
+        {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{error}</div>}
         <div className="flex gap-3">
-          <button onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={deleting}>
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting || !confirmPassword}
-            className="flex-1 py-3 text-xs bg-tantra-red text-white font-bold uppercase tracking-widest border border-tantra-red hover:bg-red-700 transition disabled:opacity-50"
-          >
+          <button onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={deleting}>Cancel</button>
+          <button onClick={handleDelete} disabled={deleting || !confirmPassword} className="flex-1 py-3 text-xs bg-tantra-red text-white font-bold uppercase tracking-widest border border-tantra-red hover:bg-red-700 transition disabled:opacity-50">
             {deleting ? "Deleting..." : "Delete Forever"}
           </button>
         </div>
@@ -1001,34 +993,78 @@ function DeleteModal({
   );
 }
 
-// ============ MODAL SHELL ============
+function DeleteOpenBarModal({ signup, onClose, onDeleted, password }: any) {
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleDelete() {
+    setError("");
+    if (!confirmPassword) { setError("Please re-enter your password to confirm"); return; }
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/open-bar-list", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ id: signup.id, confirm_password: confirmPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      onDeleted();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="p-7 space-y-5">
+        <div>
+          <div className="flex items-center gap-3 mb-3"><span className="accent-line"></span><span className="label text-tantra-red">DELETE OPEN BAR SIGNUP</span></div>
+          <h2 className="display-text text-2xl text-default mb-2">Are you sure?</h2>
+          <p className="text-sm text-muted">
+            This will permanently delete <span className="text-default font-bold">{signup.full_name}'s</span> Open Bar Pass. They'll need to sign up again to get a new one.
+          </p>
+        </div>
+        <div className="bg-deep tantra-border p-4">
+          <div className="label mb-2">SIGNUP DETAILS</div>
+          <div className="text-sm text-default space-y-1">
+            <div><span className="text-muted">Name:</span> {signup.full_name}</div>
+            <div><span className="text-muted">Email:</span> {signup.email}</div>
+            <div><span className="text-muted">Pass:</span> <span className="font-mono">{signup.ticket_code}</span></div>
+          </div>
+        </div>
+        <div>
+          <label className="label block mb-2 text-tantra-red">RE-ENTER YOUR PASSWORD TO CONFIRM</label>
+          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="tantra-input w-full px-4 py-3" placeholder="Password" autoFocus />
+        </div>
+        {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{error}</div>}
+        <div className="flex gap-3">
+          <button onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={deleting}>Cancel</button>
+          <button onClick={handleDelete} disabled={deleting || !confirmPassword} className="flex-1 py-3 text-xs bg-tantra-red text-white font-bold uppercase tracking-widest border border-tantra-red hover:bg-red-700 transition disabled:opacity-50">
+            {deleting ? "Deleting..." : "Delete Forever"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  // Close on escape
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div
-        className="relative bg-card tantra-border-strong max-w-lg w-full my-8 z-10"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="relative bg-card tantra-border-strong max-w-lg w-full my-8 z-10" onClick={(e) => e.stopPropagation()}>
         <div className="h-1 bg-tantra-red w-full" />
-        <button
-          onClick={onClose}
-          className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-tantra-red transition"
-          aria-label="Close"
-        >
+        <button onClick={onClose} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-tantra-red transition" aria-label="Close">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -1039,21 +1075,8 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
   );
 }
 
-// ============ ISSUE TAB ============
-
 function IssueTab(props: any) {
-  const {
-    issueSuccess, setIssueSuccess,
-    fullName, setFullName,
-    email, setEmail,
-    phone, setPhone,
-    groupSize, setGroupSize,
-    tableNumber, setTableNumber,
-    notes, setNotes,
-    issuedBy, setIssuedBy,
-    eventDatetime, setEventDatetime,
-    issueError, issueLoading, onSubmit,
-  } = props;
+  const { issueSuccess, setIssueSuccess, fullName, setFullName, email, setEmail, phone, setPhone, groupSize, setGroupSize, tableNumber, setTableNumber, notes, setNotes, issuedBy, setIssuedBy, eventDatetime, setEventDatetime, issueError, issueLoading, onSubmit } = props;
 
   return (
     <div className="max-w-xl">
@@ -1065,9 +1088,7 @@ function IssueTab(props: any) {
             </svg>
           </div>
           <div className="text-center mb-2">
-            <span className="accent-line"></span>
-            <span className="label mx-3">CONFIRMED</span>
-            <span className="accent-line"></span>
+            <span className="accent-line"></span><span className="label mx-3">CONFIRMED</span><span className="accent-line"></span>
           </div>
           <h2 className="display-text text-3xl text-default text-center mb-1">Reservation Issued</h2>
           <p className="text-sm text-muted text-center mb-6">
@@ -1082,24 +1103,20 @@ function IssueTab(props: any) {
             <div className="absolute top-0 right-0 w-2 h-2 bg-tantra-red"></div>
             <div className="absolute bottom-0 left-0 w-2 h-2 bg-tantra-red"></div>
             <div className="absolute bottom-0 right-0 w-2 h-2 bg-tantra-red"></div>
-
             {issueSuccess.eventDatetime && (
               <div className="mb-4 pb-4 border-b border-[var(--border)]">
                 <div className="label mb-2">EVENT DATE</div>
                 <div className="display-text text-default text-lg">{formatEventDate(issueSuccess.eventDatetime)}</div>
               </div>
             )}
-
             <div className="label mb-3">TICKET NUMBER</div>
             <div className="font-mono text-default text-3xl font-black tracking-wider">{issueSuccess.ticketCode}</div>
-
             {issueSuccess.tableNumber && (
               <div className="mt-5 pt-5 border-t border-[var(--border)]">
                 <div className="label mb-2">TABLE</div>
                 <div className="display-text text-tantra-red text-2xl">{issueSuccess.tableNumber.toUpperCase()}</div>
               </div>
             )}
-
             {issueSuccess.notes && (
               <div className="mt-5 pt-5 border-t border-[var(--border)]">
                 <div className="label mb-2">NOTES</div>
@@ -1110,8 +1127,7 @@ function IssueTab(props: any) {
 
           {issueSuccess.emailSent ? (
             <div className="bg-green-500/10 border border-green-500/40 text-green-600 dark:text-green-200 text-sm px-4 py-3 mb-5 flex items-start gap-2">
-              <span className="font-bold">✓</span>
-              <span>Email sent to <strong>{issueSuccess.email}</strong></span>
+              <span className="font-bold">✓</span><span>Email sent to <strong>{issueSuccess.email}</strong></span>
             </div>
           ) : (
             <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3 mb-5">
@@ -1124,34 +1140,18 @@ function IssueTab(props: any) {
       ) : (
         <form onSubmit={onSubmit} className="bg-card tantra-border-strong p-7 sm:p-9 space-y-5">
           <div className="mb-1">
-            <div className="flex items-center gap-3 mb-3">
-              <span className="accent-line"></span>
-              <span className="label">NEW ENTRY</span>
-            </div>
+            <div className="flex items-center gap-3 mb-3"><span className="accent-line"></span><span className="label">NEW ENTRY</span></div>
             <h2 className="display-text text-3xl text-default mb-2">Add Guest</h2>
             <p className="text-sm text-muted">Enter client details — they receive one ticket by email.</p>
           </div>
-
-          <div>
-            <label className="label block mb-2">EVENT DATE & TIME</label>
-            <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3.5" />
-          </div>
-
-          <div>
-            <label className="label block mb-2">CLIENT NAME</label>
-            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" />
-          </div>
-
-          <div>
-            <label className="label block mb-2">EMAIL</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="client@example.com" />
-          </div>
-
-          <div>
-            <label className="label block mb-2">PHONE</label>
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="+297 123 4567" />
-          </div>
-
+          <div><label className="label block mb-2">EVENT DATE & TIME</label>
+            <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3.5" /></div>
+          <div><label className="label block mb-2">CLIENT NAME</label>
+            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" /></div>
+          <div><label className="label block mb-2">EMAIL</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="client@example.com" /></div>
+          <div><label className="label block mb-2">PHONE</label>
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="+297 123 4567" /></div>
           <div>
             <label className="label block mb-3">PARTY SIZE</label>
             <div className="flex items-center gap-4 bg-deep tantra-border p-4">
@@ -1163,29 +1163,14 @@ function IssueTab(props: any) {
               <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
             </div>
           </div>
-
-          <div>
-            <label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
-            <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. 12, VIP-3, Booth A" />
-          </div>
-
-          <div>
-            <label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" />
-          </div>
-
-          <div>
-            <label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
-            <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Hostess name" />
-          </div>
-
-          {issueError && (
-            <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{issueError}</div>
-          )}
-
-          <button type="submit" disabled={issueLoading} className="btn-red w-full py-4 text-sm">
-            {issueLoading ? "Sending..." : "Issue Ticket & Send Email"}
-          </button>
+          <div><label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+            <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. 12, VIP-3, Booth A" /></div>
+          <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" /></div>
+          <div><label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+            <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Hostess name" /></div>
+          {issueError && <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{issueError}</div>}
+          <button type="submit" disabled={issueLoading} className="btn-red w-full py-4 text-sm">{issueLoading ? "Sending..." : "Issue Ticket & Send Email"}</button>
         </form>
       )}
     </div>

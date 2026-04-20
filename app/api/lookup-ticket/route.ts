@@ -19,6 +19,39 @@ export async function GET(req: NextRequest) {
   const supabase = getAdminClient();
   const cleanCode = code.trim().toUpperCase();
 
+  // Branch based on prefix
+  if (cleanCode.startsWith("OBP-")) {
+    // Open Bar Pass lookup
+    const { data, error } = await supabase
+      .from("open_bar_signups")
+      .select("*")
+      .eq("ticket_code", cleanCode)
+      .maybeSingle();
+
+    if (error) {
+      console.error("OBP lookup error:", error);
+      return NextResponse.json({ error: "Lookup failed" }, { status: 500 });
+    }
+    if (!data) {
+      return NextResponse.json({ found: false });
+    }
+
+    return NextResponse.json({
+      found: true,
+      ticket_type: "open_bar",
+      ticket: {
+        ticket_code: data.ticket_code,
+        checked_in: data.checked_in,
+        checked_in_at: data.checked_in_at,
+        full_name: data.full_name,
+        email: data.email,
+        date_of_birth: data.date_of_birth,
+        event_datetime: data.event_datetime,
+      },
+    });
+  }
+
+  // Regular reservation ticket lookup
   const { data, error } = await supabase
     .from("tickets")
     .select(
@@ -58,6 +91,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     found: true,
+    ticket_type: "reservation",
     ticket: {
       ticket_code: data.ticket_code,
       checked_in: data.checked_in,
