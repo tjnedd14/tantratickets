@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to create ticket" }, { status: 500 });
     }
 
-    const pdfBuffer = buildTicketPDF({
+    const pdfBuffer = await buildTicketPDF({
       ticketCode,
       clientName: cleanName,
       guestCount: group_size,

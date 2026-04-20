@@ -408,6 +408,16 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <a
+                href="/door"
+                className="btn-outline px-5 py-2.5 text-xs flex items-center gap-1.5"
+                title="Open scanner page for door staff"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2M9 9h6v6H9z" />
+                </svg>
+                Door
+              </a>
               <ThemeToggle />
               <button onClick={logout} className="btn-outline px-5 py-2.5 text-xs">
                 Sign Out
