@@ -11,9 +11,8 @@ import {
   getTodayKey,
   getTomorrowKey,
   getTonightKey,
-  getThisWeekendKeys,
   formatDateKey,
-  toDateKey,
+  toDatetimeLocal,
 } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
@@ -89,6 +88,10 @@ export default function AdminPage() {
   const [dateMode, setDateMode] = useState<DateFilterMode>("specific");
   const [selectedDate, setSelectedDate] = useState<string>(getTodayKey());
   const [checkingIn, setCheckingIn] = useState<Record<string, boolean>>({});
+
+  // Edit / delete modals
+  const [editingReservation, setEditingReservation] = useState<Registration | null>(null);
+  const [deletingReservation, setDeletingReservation] = useState<Registration | null>(null);
 
   useEffect(() => {
     if (!eventDatetime) setEventDatetime(getDefaultEventDatetime());
@@ -291,9 +294,7 @@ export default function AdminPage() {
     }
   }
 
-  // ======= Date + Filter logic =======
   const { availableDates, dateFilteredRegs } = useMemo(() => {
-    // All unique event dates (for dropdown)
     const dateSet = new Set<string>();
     for (const r of registrations) {
       if (r.event_datetime) {
@@ -301,7 +302,7 @@ export default function AdminPage() {
         if (k) dateSet.add(k);
       }
     }
-    const availableDates = Array.from(dateSet).sort().reverse(); // newest first
+    const availableDates = Array.from(dateSet).sort().reverse();
 
     let filtered = registrations;
 
@@ -315,7 +316,6 @@ export default function AdminPage() {
         (r) => r.event_datetime && isoToDateKey(r.event_datetime) >= today
       );
     }
-    // "all" = no filtering
 
     return { availableDates, dateFilteredRegs: filtered };
   }, [registrations, dateMode, selectedDate]);
@@ -336,7 +336,6 @@ export default function AdminPage() {
     );
   });
 
-  // Stats use the date-filtered set (but not search)
   const totalReservations = dateFilteredRegs.length;
   const totalGuests = dateFilteredRegs.reduce((sum, r) => sum + r.group_size, 0);
   const totalCheckedIn = dateFilteredRegs.reduce(
@@ -379,19 +378,8 @@ export default function AdminPage() {
             <span className="accent-line"></span>
           </div>
           <p className="text-muted text-sm text-center mb-7">Enter password to continue</p>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="tantra-input w-full px-4 py-3.5 mb-4"
-            placeholder="Password"
-            autoFocus
-          />
-          {authError && (
-            <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3 mb-4">
-              {authError}
-            </div>
-          )}
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="tantra-input w-full px-4 py-3.5 mb-4" placeholder="Password" autoFocus />
+          {authError && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3 mb-4">{authError}</div>}
           <button type="submit" disabled={authLoading} className="btn-red w-full py-4 text-sm">
             {authLoading ? "Checking..." : "Sign In"}
           </button>
@@ -406,6 +394,7 @@ export default function AdminPage() {
 
       <div className="relative z-10 px-4 py-6 sm:py-8">
         <div className="max-w-6xl mx-auto">
+          {/* Header */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-[var(--border)]">
             <div className="flex items-center gap-4">
               <img src={logoUrl} alt="Tantra" className="h-12 w-auto object-contain" />
@@ -426,13 +415,11 @@ export default function AdminPage() {
             </div>
           </div>
 
+          {/* Tabs */}
           <div className="flex gap-8 mb-8 border-b border-[var(--border)]">
-            <TabButton active={tab === "issue"} onClick={() => setTab("issue")}>
-              New Reservation
-            </TabButton>
+            <TabButton active={tab === "issue"} onClick={() => setTab("issue")}>New Reservation</TabButton>
             <TabButton active={tab === "list"} onClick={() => setTab("list")}>
-              Guest List
-              <span className="ml-2 text-tantra-red">({registrations.length})</span>
+              Guest List<span className="ml-2 text-tantra-red">({registrations.length})</span>
             </TabButton>
           </div>
 
@@ -440,77 +427,58 @@ export default function AdminPage() {
             <IssueTab
               issueSuccess={issueSuccess}
               setIssueSuccess={setIssueSuccess}
-              fullName={fullName}
-              setFullName={setFullName}
-              email={email}
-              setEmail={setEmail}
-              phone={phone}
-              setPhone={setPhone}
-              groupSize={groupSize}
-              setGroupSize={setGroupSize}
-              tableNumber={tableNumber}
-              setTableNumber={setTableNumber}
-              notes={notes}
-              setNotes={setNotes}
-              issuedBy={issuedBy}
-              setIssuedBy={setIssuedBy}
-              eventDatetime={eventDatetime}
-              setEventDatetime={setEventDatetime}
-              issueError={issueError}
-              issueLoading={issueLoading}
+              fullName={fullName} setFullName={setFullName}
+              email={email} setEmail={setEmail}
+              phone={phone} setPhone={setPhone}
+              groupSize={groupSize} setGroupSize={setGroupSize}
+              tableNumber={tableNumber} setTableNumber={setTableNumber}
+              notes={notes} setNotes={setNotes}
+              issuedBy={issuedBy} setIssuedBy={setIssuedBy}
+              eventDatetime={eventDatetime} setEventDatetime={setEventDatetime}
+              issueError={issueError} issueLoading={issueLoading}
               onSubmit={handleIssueSubmit}
             />
           )}
 
           {tab === "list" && (
             <div className="space-y-6">
-              {/* Date selector */}
               <DateFilterBar
-                mode={dateMode}
-                setMode={setDateMode}
-                selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
+                mode={dateMode} setMode={setDateMode}
+                selectedDate={selectedDate} setSelectedDate={setSelectedDate}
                 availableDates={availableDates}
               />
 
-              {/* Stats */}
               <div className="grid grid-cols-3 gap-3 sm:gap-5">
                 <StatCard label="RESERVATIONS" value={totalReservations} />
                 <StatCard label="CHECKED IN" value={totalCheckedIn} suffix={`of ${totalGuests}`} accent />
                 <StatCard label="PENDING" value={pendingGuests} />
               </div>
 
-              {/* Search + export */}
               <div className="flex flex-wrap gap-3">
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search name, email, phone, ticket, table..."
-                  className="tantra-input flex-1 min-w-[200px] px-4 py-3"
-                />
+                  className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
                 <button onClick={refreshList} disabled={listLoading} className="btn-outline px-5 py-3 text-xs">
                   {listLoading ? "..." : "Refresh"}
                 </button>
                 <button onClick={downloadCSV} className="btn-red px-5 py-3 text-xs">Export CSV</button>
               </div>
 
-              {/* Status filter pills */}
               <div className="flex gap-2 flex-wrap">
                 <FilterPill active={filter === "all"} onClick={() => setFilter("all")} label={`All (${dateFilteredRegs.length})`} />
                 <FilterPill active={filter === "pending"} onClick={() => setFilter("pending")} label={`Pending (${dateFilteredRegs.filter((r) => !r.tickets[0]?.checked_in).length})`} />
                 <FilterPill active={filter === "checked_in"} onClick={() => setFilter("checked_in")} label={`Checked In (${dateFilteredRegs.filter((r) => r.tickets[0]?.checked_in).length})`} />
               </div>
 
-              {/* Table */}
               <GuestTable
                 registrations={searchAndStatusFiltered}
                 totalRegistrations={registrations.length}
                 checkingIn={checkingIn}
                 onToggleCheckIn={toggleCheckIn}
+                onEdit={(r) => setEditingReservation(r)}
+                onDelete={(r) => setDeletingReservation(r)}
               />
 
-              {/* Analytics (uses ALL registrations, not the date-filtered set — to show trends across all dates) */}
               <div className="pt-6 border-t border-[var(--border)]">
                 <AnalyticsPanel registrations={registrations} />
               </div>
@@ -518,6 +486,30 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      {/* Modals */}
+      {editingReservation && (
+        <EditModal
+          reservation={editingReservation}
+          onClose={() => setEditingReservation(null)}
+          onSaved={() => {
+            setEditingReservation(null);
+            refreshList();
+          }}
+          password={password}
+        />
+      )}
+      {deletingReservation && (
+        <DeleteModal
+          reservation={deletingReservation}
+          onClose={() => setDeletingReservation(null)}
+          onDeleted={() => {
+            setDeletingReservation(null);
+            refreshList();
+          }}
+          password={password}
+        />
+      )}
     </main>
   );
 }
@@ -526,12 +518,7 @@ export default function AdminPage() {
 
 function TabButton({ active, onClick, children }: any) {
   return (
-    <button
-      onClick={onClick}
-      className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${
-        active ? "text-default" : "text-muted hover:text-default"
-      }`}
-    >
+    <button onClick={onClick} className={`pb-3 text-sm font-bold uppercase tracking-widest transition relative ${active ? "text-default" : "text-muted hover:text-default"}`}>
       {children}
       {active && <span className="absolute bottom-[-1px] left-0 right-0 h-[2px] bg-tantra-red" />}
     </button>
@@ -539,27 +526,15 @@ function TabButton({ active, onClick, children }: any) {
 }
 
 function DateFilterBar({
-  mode,
-  setMode,
-  selectedDate,
-  setSelectedDate,
-  availableDates,
+  mode, setMode, selectedDate, setSelectedDate, availableDates,
 }: {
-  mode: DateFilterMode;
-  setMode: (m: DateFilterMode) => void;
-  selectedDate: string;
-  setSelectedDate: (d: string) => void;
+  mode: DateFilterMode; setMode: (m: DateFilterMode) => void;
+  selectedDate: string; setSelectedDate: (d: string) => void;
   availableDates: string[];
 }) {
   function handleQuickPick(key: "tonight" | "today" | "tomorrow" | "upcoming" | "all") {
-    if (key === "all") {
-      setMode("all");
-      return;
-    }
-    if (key === "upcoming") {
-      setMode("upcoming");
-      return;
-    }
+    if (key === "all") { setMode("all"); return; }
+    if (key === "upcoming") { setMode("upcoming"); return; }
     setMode("specific");
     if (key === "today") setSelectedDate(getTodayKey());
     else if (key === "tomorrow") setSelectedDate(getTomorrowKey());
@@ -583,49 +558,22 @@ function DateFilterBar({
 
       <div className="flex flex-wrap items-center gap-3 border-t border-[var(--border)] pt-3">
         <div className="label">PICK A DATE</div>
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => {
-            setSelectedDate(e.target.value);
-            setMode("specific");
-          }}
-          className="tantra-input px-3 py-2 text-sm"
-        />
+        <input type="date" value={selectedDate}
+          onChange={(e) => { setSelectedDate(e.target.value); setMode("specific"); }}
+          className="tantra-input px-3 py-2 text-sm" />
         {availableDates.length > 0 && (
           <select
             value={mode === "specific" ? selectedDate : ""}
-            onChange={(e) => {
-              if (e.target.value) {
-                setSelectedDate(e.target.value);
-                setMode("specific");
-              }
-            }}
+            onChange={(e) => { if (e.target.value) { setSelectedDate(e.target.value); setMode("specific"); } }}
             className="tantra-input px-3 py-2 text-sm"
           >
             <option value="">— Jump to event night —</option>
-            {availableDates.map((d) => (
-              <option key={d} value={d}>
-                {formatDateKey(d)}
-              </option>
-            ))}
+            {availableDates.map((d) => <option key={d} value={d}>{formatDateKey(d)}</option>)}
           </select>
         )}
-        {mode === "specific" && (
-          <div className="text-sm text-muted">
-            Viewing: <span className="text-default font-semibold">{formatDateKey(selectedDate)}</span>
-          </div>
-        )}
-        {mode === "upcoming" && (
-          <div className="text-sm text-muted">
-            Viewing: <span className="text-default font-semibold">All upcoming reservations</span>
-          </div>
-        )}
-        {mode === "all" && (
-          <div className="text-sm text-muted">
-            Viewing: <span className="text-default font-semibold">All reservations (past + future)</span>
-          </div>
-        )}
+        {mode === "specific" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">{formatDateKey(selectedDate)}</span></div>}
+        {mode === "upcoming" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">All upcoming reservations</span></div>}
+        {mode === "all" && <div className="text-sm text-muted">Viewing: <span className="text-default font-semibold">All reservations (past + future)</span></div>}
       </div>
     </div>
   );
@@ -633,38 +581,19 @@ function DateFilterBar({
 
 function QuickBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition border ${
-        active
-          ? "bg-tantra-red text-white border-tantra-red"
-          : "bg-transparent text-muted border-[var(--border)] hover:border-tantra-red hover:text-default"
-      }`}
-    >
+    <button onClick={onClick} className={`px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition border ${active ? "bg-tantra-red text-white border-tantra-red" : "bg-transparent text-muted border-[var(--border)] hover:border-tantra-red hover:text-default"}`}>
       {label}
     </button>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  suffix,
-  accent = false,
-}: {
-  label: string;
-  value: number;
-  suffix?: string;
-  accent?: boolean;
-}) {
+function StatCard({ label, value, suffix, accent = false }: { label: string; value: number; suffix?: string; accent?: boolean }) {
   return (
     <div className={`p-5 sm:p-6 relative overflow-hidden ${accent ? "bg-tantra-red text-white" : "bg-card tantra-border-strong text-default"}`}>
       <div className={`label mb-2 ${accent ? "text-white/80" : ""}`}>{label}</div>
       <div className="flex items-baseline gap-2">
         <div className="display-text text-4xl sm:text-5xl leading-none">{value}</div>
-        {suffix && (
-          <div className={`text-xs font-semibold ${accent ? "text-white/70" : "text-muted"}`}>{suffix}</div>
-        )}
+        {suffix && <div className={`text-xs font-semibold ${accent ? "text-white/70" : "text-muted"}`}>{suffix}</div>}
       </div>
       {!accent && <div className="absolute top-0 right-0 w-1 h-full bg-tantra-red" />}
     </div>
@@ -673,29 +602,21 @@ function StatCard({
 
 function FilterPill({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition border ${
-        active
-          ? "bg-tantra-red text-white border-tantra-red"
-          : "bg-card text-muted border-[var(--border)] hover:border-tantra-red hover:text-default"
-      }`}
-    >
+    <button onClick={onClick} className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition border ${active ? "bg-tantra-red text-white border-tantra-red" : "bg-card text-muted border-[var(--border)] hover:border-tantra-red hover:text-default"}`}>
       {label}
     </button>
   );
 }
 
 function GuestTable({
-  registrations,
-  totalRegistrations,
-  checkingIn,
-  onToggleCheckIn,
+  registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete,
 }: {
   registrations: Registration[];
   totalRegistrations: number;
   checkingIn: Record<string, boolean>;
   onToggleCheckIn: (code: string, current: boolean) => void;
+  onEdit: (r: Registration) => void;
+  onDelete: (r: Registration) => void;
 }) {
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
@@ -710,15 +631,14 @@ function GuestTable({
               <th className="px-4 py-4 label">Table</th>
               <th className="px-4 py-4 label">Ticket</th>
               <th className="px-4 py-4 label text-center">Check-in</th>
+              <th className="px-4 py-4 label text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
             {registrations.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-muted">
-                  {totalRegistrations === 0
-                    ? "No reservations yet."
-                    : "No reservations match these filters."}
+                <td colSpan={8} className="px-4 py-12 text-center text-muted">
+                  {totalRegistrations === 0 ? "No reservations yet." : "No reservations match these filters."}
                 </td>
               </tr>
             )}
@@ -727,10 +647,7 @@ function GuestTable({
               const isCheckedIn = ticket?.checked_in ?? false;
               const isLoading = ticket ? checkingIn[ticket.ticket_code] : false;
               return (
-                <tr
-                  key={r.id}
-                  className={`border-t border-[var(--border)] hover:bg-surface transition ${isCheckedIn ? "opacity-70" : ""}`}
-                >
+                <tr key={r.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${isCheckedIn ? "opacity-70" : ""}`}>
                   <td className="px-4 py-3.5">
                     <div className="font-semibold text-default">{r.full_name}</div>
                     {r.notes && <div className="text-xs text-muted mt-1 italic">{r.notes}</div>}
@@ -741,32 +658,16 @@ function GuestTable({
                     <div className="text-xs text-subtle font-mono">{r.phone}</div>
                   </td>
                   <td className="px-4 py-3.5 text-xs whitespace-nowrap">
-                    {r.event_datetime ? (
-                      <span className="text-default font-semibold">{formatEventDate(r.event_datetime)}</span>
-                    ) : (
-                      <span className="text-subtle">—</span>
-                    )}
+                    {r.event_datetime ? <span className="text-default font-semibold">{formatEventDate(r.event_datetime)}</span> : <span className="text-subtle">—</span>}
                   </td>
                   <td className="px-4 py-3.5">
-                    <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">
-                      {r.group_size}
-                    </span>
+                    <span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span>
                   </td>
                   <td className="px-4 py-3.5">
-                    {r.table_number ? (
-                      <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">
-                        {r.table_number}
-                      </span>
-                    ) : (
-                      <span className="text-subtle text-xs">—</span>
-                    )}
+                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-4 py-3.5">
-                    {ticket ? (
-                      <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span>
-                    ) : (
-                      <span className="text-subtle text-xs">—</span>
-                    )}
+                    {ticket ? <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-4 py-3.5 text-center">
                     {ticket ? (
@@ -776,9 +677,29 @@ function GuestTable({
                         checkedInAt={ticket.checked_in_at}
                         onClick={() => onToggleCheckIn(ticket.ticket_code, isCheckedIn)}
                       />
-                    ) : (
-                      <span className="text-subtle text-xs">—</span>
-                    )}
+                    ) : <span className="text-subtle text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3.5 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => onEdit(r)}
+                        className="btn-icon w-8 h-8 flex items-center justify-center"
+                        title="Edit reservation"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => onDelete(r)}
+                        className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition"
+                        title="Delete reservation"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -790,74 +711,348 @@ function GuestTable({
   );
 }
 
-function CheckInButton({
-  checkedIn,
-  loading,
-  checkedInAt,
-  onClick,
-}: {
-  checkedIn: boolean;
-  loading: boolean;
-  checkedInAt: string | null;
-  onClick: () => void;
-}) {
+function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
   if (checkedIn) {
     return (
-      <button
-        onClick={onClick}
-        disabled={loading}
-        className="inline-flex flex-col items-center gap-0.5 px-3 py-2 bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition disabled:opacity-50"
-        title="Click to undo check-in"
-      >
+      <button onClick={onClick} disabled={loading} className="inline-flex flex-col items-center gap-0.5 px-3 py-2 bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition disabled:opacity-50" title="Click to undo check-in">
         <span className="flex items-center gap-1">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
           IN
         </span>
-        {checkedInAt && (
-          <span className="text-[9px] opacity-80">
-            {new Date(checkedInAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-          </span>
-        )}
+        {checkedInAt && <span className="text-[9px] opacity-80">{new Date(checkedInAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>}
       </button>
     );
   }
   return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className="inline-flex items-center gap-1 px-3 py-2 bg-transparent border-2 border-[var(--border-strong)] text-muted text-xs font-bold uppercase tracking-wider hover:border-tantra-red hover:text-tantra-red transition disabled:opacity-50"
-    >
+    <button onClick={onClick} disabled={loading} className="inline-flex items-center gap-1 px-3 py-2 bg-transparent border-2 border-[var(--border-strong)] text-muted text-xs font-bold uppercase tracking-wider hover:border-tantra-red hover:text-tantra-red transition disabled:opacity-50">
       {loading ? "..." : "CHECK IN"}
     </button>
   );
 }
 
-// Issue form as a sub-component for readability
+// ============ EDIT MODAL ============
+
+function EditModal({
+  reservation, onClose, onSaved, password,
+}: {
+  reservation: Registration;
+  onClose: () => void;
+  onSaved: () => void;
+  password: string;
+}) {
+  const [fullName, setFullName] = useState(reservation.full_name);
+  const [email, setEmail] = useState(reservation.email);
+  const [phone, setPhone] = useState(reservation.phone);
+  const [groupSize, setGroupSize] = useState(reservation.group_size);
+  const [tableNumber, setTableNumber] = useState(reservation.table_number || "");
+  const [notes, setNotes] = useState(reservation.notes || "");
+  const [issuedBy, setIssuedBy] = useState(reservation.issued_by || "");
+  const [eventDatetime, setEventDatetime] = useState(
+    reservation.event_datetime ? toDatetimeLocal(new Date(reservation.event_datetime)) : ""
+  );
+  const [sendEmail, setSendEmail] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    if (fullName.trim().length < 2) { setError("Invalid client name"); return; }
+    if (!isValidEmail(email)) { setError("Invalid email"); return; }
+    if (!isValidPhone(phone)) { setError("Invalid phone"); return; }
+    if (groupSize < 1 || groupSize > 50) { setError("Party size must be 1-50"); return; }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/reservations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({
+          id: reservation.id,
+          full_name: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizePhone(phone),
+          group_size: groupSize,
+          table_number: tableNumber.trim() || null,
+          notes: notes.trim() || null,
+          issued_by: issuedBy.trim() || null,
+          event_datetime: eventDatetime || null,
+          send_email: sendEmail,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+
+      if (sendEmail && !data.email_sent) {
+        alert(`Reservation updated, but email failed: ${data.email_error || "unknown error"}`);
+      }
+
+      onSaved();
+    } catch (err: any) {
+      setError(err.message || "Failed to update");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <form onSubmit={handleSubmit} className="p-7 space-y-4">
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="accent-line"></span>
+            <span className="label">EDIT RESERVATION</span>
+          </div>
+          <h2 className="display-text text-2xl text-default mb-1">{reservation.full_name}</h2>
+          <p className="text-xs text-muted font-mono">
+            {reservation.tickets[0]?.ticket_code}
+          </p>
+        </div>
+
+        <div>
+          <label className="label block mb-2">EVENT DATE & TIME</label>
+          <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)}
+            className="tantra-input w-full px-4 py-3" />
+        </div>
+
+        <div>
+          <label className="label block mb-2">CLIENT NAME</label>
+          <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
+            className="tantra-input w-full px-4 py-3" />
+        </div>
+
+        <div>
+          <label className="label block mb-2">EMAIL</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            className="tantra-input w-full px-4 py-3" />
+        </div>
+
+        <div>
+          <label className="label block mb-2">PHONE</label>
+          <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+            className="tantra-input w-full px-4 py-3" />
+        </div>
+
+        <div>
+          <label className="label block mb-2">PARTY SIZE</label>
+          <div className="flex items-center gap-3 bg-deep tantra-border p-3">
+            <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))}
+              className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">−</button>
+            <div className="flex-1 text-center">
+              <div className="display-text text-3xl text-tantra-red leading-none">{groupSize}</div>
+              <div className="label mt-1">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
+            </div>
+            <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))}
+              className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
+          </div>
+        </div>
+
+        <div>
+          <label className="label block mb-2">TABLE</label>
+          <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)}
+            className="tantra-input w-full px-4 py-3" placeholder="e.g. 12, VIP-3, Booth A" />
+        </div>
+
+        <div>
+          <label className="label block mb-2">NOTES</label>
+          <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)}
+            className="tantra-input w-full px-4 py-3" placeholder="Birthday, bottle service, etc." />
+        </div>
+
+        <div>
+          <label className="label block mb-2">ISSUED BY</label>
+          <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)}
+            className="tantra-input w-full px-4 py-3" placeholder="Hostess name" />
+        </div>
+
+        {/* Send-email checkbox */}
+        <label className="flex items-center gap-3 cursor-pointer bg-surface tantra-border p-3 hover:border-tantra-red transition">
+          <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)}
+            className="w-4 h-4 accent-tantra-red" />
+          <div className="flex-1">
+            <div className="text-sm font-bold text-default">Send updated ticket</div>
+            <div className="text-xs text-muted">Re-sends the ticket email with the new details and PDF</div>
+          </div>
+        </label>
+
+        {error && (
+          <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button type="button" onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={saving}>
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="btn-red flex-1 py-3 text-xs">
+            {saving ? "Saving..." : "Save Changes"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ============ DELETE MODAL ============
+
+function DeleteModal({
+  reservation, onClose, onDeleted, password,
+}: {
+  reservation: Registration;
+  onClose: () => void;
+  onDeleted: () => void;
+  password: string;
+}) {
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleDelete() {
+    setError("");
+    if (!confirmPassword) {
+      setError("Please re-enter your password to confirm");
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/reservations", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({
+          id: reservation.id,
+          confirm_password: confirmPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      onDeleted();
+    } catch (err: any) {
+      setError(err.message || "Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="p-7 space-y-5">
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="accent-line"></span>
+            <span className="label text-tantra-red">DELETE RESERVATION</span>
+          </div>
+          <h2 className="display-text text-2xl text-default mb-2">Are you sure?</h2>
+          <p className="text-sm text-muted">
+            This will permanently delete the reservation and ticket for{" "}
+            <span className="text-default font-bold">{reservation.full_name}</span>
+            {reservation.event_datetime && (
+              <> on <span className="text-default font-bold">{formatEventDate(reservation.event_datetime)}</span></>
+            )}
+            . This cannot be undone.
+          </p>
+        </div>
+
+        <div className="bg-deep tantra-border p-4">
+          <div className="label mb-2">RESERVATION DETAILS</div>
+          <div className="text-sm text-default space-y-1">
+            <div><span className="text-muted">Client:</span> {reservation.full_name}</div>
+            <div><span className="text-muted">Party:</span> {reservation.group_size} {reservation.group_size === 1 ? "guest" : "guests"}</div>
+            {reservation.table_number && <div><span className="text-muted">Table:</span> {reservation.table_number}</div>}
+            <div><span className="text-muted">Ticket:</span> <span className="font-mono">{reservation.tickets[0]?.ticket_code}</span></div>
+          </div>
+        </div>
+
+        <div>
+          <label className="label block mb-2 text-tantra-red">RE-ENTER YOUR PASSWORD TO CONFIRM</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className="tantra-input w-full px-4 py-3"
+            placeholder="Password"
+            autoFocus
+          />
+        </div>
+
+        {error && (
+          <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={deleting}>
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting || !confirmPassword}
+            className="flex-1 py-3 text-xs bg-tantra-red text-white font-bold uppercase tracking-widest border border-tantra-red hover:bg-red-700 transition disabled:opacity-50"
+          >
+            {deleting ? "Deleting..." : "Delete Forever"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ============ MODAL SHELL ============
+
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  // Close on escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div
+        className="relative bg-card tantra-border-strong max-w-lg w-full my-8 z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="h-1 bg-tantra-red w-full" />
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-muted hover:text-tantra-red transition"
+          aria-label="Close"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ============ ISSUE TAB ============
+
 function IssueTab(props: any) {
   const {
-    issueSuccess,
-    setIssueSuccess,
-    fullName,
-    setFullName,
-    email,
-    setEmail,
-    phone,
-    setPhone,
-    groupSize,
-    setGroupSize,
-    tableNumber,
-    setTableNumber,
-    notes,
-    setNotes,
-    issuedBy,
-    setIssuedBy,
-    eventDatetime,
-    setEventDatetime,
-    issueError,
-    issueLoading,
-    onSubmit,
+    issueSuccess, setIssueSuccess,
+    fullName, setFullName,
+    email, setEmail,
+    phone, setPhone,
+    groupSize, setGroupSize,
+    tableNumber, setTableNumber,
+    notes, setNotes,
+    issuedBy, setIssuedBy,
+    eventDatetime, setEventDatetime,
+    issueError, issueLoading, onSubmit,
   } = props;
 
   return (
@@ -879,12 +1074,7 @@ function IssueTab(props: any) {
             <span className="text-default font-semibold">{issueSuccess.clientName}</span>
             <span className="mx-2 text-tantra-red">·</span>
             {issueSuccess.guestCount} {issueSuccess.guestCount === 1 ? "guest" : "guests"}
-            {issueSuccess.tableNumber && (
-              <>
-                <span className="mx-2 text-tantra-red">·</span>
-                Table {issueSuccess.tableNumber}
-              </>
-            )}
+            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>Table {issueSuccess.tableNumber}</>}
           </p>
 
           <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
@@ -929,9 +1119,7 @@ function IssueTab(props: any) {
             </div>
           )}
 
-          <button onClick={() => setIssueSuccess(null)} className="btn-red w-full py-4 text-sm">
-            New Reservation
-          </button>
+          <button onClick={() => setIssueSuccess(null)} className="btn-red w-full py-4 text-sm">New Reservation</button>
         </div>
       ) : (
         <form onSubmit={onSubmit} className="bg-card tantra-border-strong p-7 sm:p-9 space-y-5">
@@ -967,16 +1155,12 @@ function IssueTab(props: any) {
           <div>
             <label className="label block mb-3">PARTY SIZE</label>
             <div className="flex items-center gap-4 bg-deep tantra-border p-4">
-              <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">
-                −
-              </button>
+              <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">−</button>
               <div className="flex-1 text-center">
                 <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
                 <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
               </div>
-              <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">
-                +
-              </button>
+              <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
             </div>
           </div>
 
@@ -996,9 +1180,7 @@ function IssueTab(props: any) {
           </div>
 
           {issueError && (
-            <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">
-              {issueError}
-            </div>
+            <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{issueError}</div>
           )}
 
           <button type="submit" disabled={issueLoading} className="btn-red w-full py-4 text-sm">
