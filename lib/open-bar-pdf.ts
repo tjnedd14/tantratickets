@@ -124,7 +124,7 @@ export async function buildOpenBarPassPDF({
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    doc.text("9:30 PM — 11:30 PM", mainX, 98);
+    doc.text("9:00 PM — 11:00 PM", mainX, 98);
   }
 
   // ========== QR SECTION ==========

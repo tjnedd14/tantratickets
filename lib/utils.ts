@@ -30,21 +30,21 @@ export function calculateAge(dob: string): number {
   return age;
 }
 
-// Open Bar runs 9:30-11:30pm Fri/Sat only.
+// Open Bar runs 9:00-11:00pm Fri/Sat only.
 // Given current moment, return the ISO datetime of the next active Open Bar session.
 // Logic:
-//   - If today is Friday and current time is before 11:30pm → tonight Fri 9:30pm
-//   - If today is Saturday and current time is before 11:30pm → tonight Sat 9:30pm
-//   - Otherwise → next Friday 9:30pm
+//   - If today is Friday and current time is before 11:00pm → tonight Fri 9:00pm
+//   - If today is Saturday and current time is before 11:00pm → tonight Sat 9:00pm
+//   - Otherwise → next Friday 9:00pm
 export function getNextOpenBarDatetime(): string {
   const now = new Date();
   const day = now.getDay(); // 0=Sun, 5=Fri, 6=Sat
 
-  // Build a "today at 11:30pm" cutoff for comparison
+  // Build a "today at 11:00pm" cutoff for comparison
   const cutoff = new Date(now);
-  cutoff.setHours(23, 30, 0, 0);
+  cutoff.setHours(23, 0, 0, 0);
 
-  // Helper: build a Date for a specific weekday at 21:30 local
+  // Helper: build a Date for a specific weekday at 21:00 local
   function buildTarget(targetDay: number): Date {
     const d = new Date(now);
     let diff = (targetDay - day + 7) % 7;
@@ -52,26 +52,26 @@ export function getNextOpenBarDatetime(): string {
       // same day — keep today
     }
     d.setDate(d.getDate() + diff);
-    d.setHours(21, 30, 0, 0);
+    d.setHours(21, 0, 0, 0);
     return d;
   }
 
   if (day === 5 && now < cutoff) {
-    // It's Friday before 11:30pm → tonight Fri 9:30pm
+    // It's Friday before 11:00pm → tonight Fri 9:00pm
     return buildTarget(5).toISOString();
   }
   if (day === 6 && now < cutoff) {
-    // It's Saturday before 11:30pm → tonight Sat 9:30pm
+    // It's Saturday before 11:00pm → tonight Sat 9:00pm
     return buildTarget(6).toISOString();
   }
 
-  // Otherwise, default to upcoming Friday 9:30pm
-  // (If it's Fri/Sat past 11:30pm, go to next Friday)
+  // Otherwise, default to upcoming Friday 9:00pm
+  // (If it's Fri/Sat past 11:00pm, go to next Friday)
   const nextFri = new Date(now);
   let addDays = (5 - day + 7) % 7;
   if (addDays === 0) addDays = 7; // if today is Friday past cutoff
   nextFri.setDate(now.getDate() + addDays);
-  nextFri.setHours(21, 30, 0, 0);
+  nextFri.setHours(21, 0, 0, 0);
   return nextFri.toISOString();
 }
 

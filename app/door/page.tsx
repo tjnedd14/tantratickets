@@ -501,7 +501,7 @@ function OpenBarResult({
           <div className="mb-4 pb-4 border-b border-[var(--border)]">
             <div className="label mb-1">VALID FOR</div>
             <div className="text-sm text-default font-semibold">{formatEventDate(ticket.event_datetime)}</div>
-            <div className="text-xs text-tantra-red font-bold mt-1">9:30 PM — 11:30 PM</div>
+            <div className="text-xs text-tantra-red font-bold mt-1">9:00 PM — 11:00 PM</div>
           </div>
         )}
 

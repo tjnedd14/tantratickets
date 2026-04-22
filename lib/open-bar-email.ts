@@ -59,7 +59,7 @@ export async function sendOpenBarPassEmail({
           ${dateStr ? `
             <div style="font-size:10px;letter-spacing:3px;color:#999;font-weight:bold;margin-bottom:4px;">VALID</div>
             <div style="font-family:'Arial Black',sans-serif;font-size:18px;color:#000;font-weight:900;margin-bottom:2px;">${escapeHtml(dateStr)}</div>
-            <div style="font-size:12px;color:#DB130D;font-weight:bold;margin-bottom:18px;">9:30 PM — 11:30 PM</div>
+            <div style="font-size:12px;color:#DB130D;font-weight:bold;margin-bottom:18px;">9:00 PM — 11:00 PM</div>
           ` : ""}
 
           <div style="border-top:1px solid #e5e5e5;padding-top:16px;">
@@ -73,7 +73,7 @@ export async function sendOpenBarPassEmail({
         <div style="font-size:11px;color:#DB130D;font-weight:bold;letter-spacing:2px;margin-bottom:8px;">IMPORTANT</div>
         <ul style="margin:0;padding-left:18px;color:#444;font-size:13px;line-height:1.9;">
           <li><strong>18+ only</strong> — valid ID required at the door</li>
-          <li>Open Bar runs <strong>9:30 PM – 11:30 PM</strong> on Friday &amp; Saturday</li>
+          <li>Open Bar runs <strong>9:00 PM – 11:00 PM</strong> on Friday &amp; Saturday</li>
           <li>Show this pass (phone or printed) at entry</li>
           <li>One pass per person — non-transferable</li>
         </ul>
@@ -95,7 +95,7 @@ export async function sendOpenBarPassEmail({
   const plainText = `
 Hey ${fullName},
 
-Your complimentary Open Bar Pass for ${eventName} is confirmed${dateStr ? ` — valid ${dateStr}, 9:30–11:30 PM` : ""}.
+Your complimentary Open Bar Pass for ${eventName} is confirmed${dateStr ? ` — valid ${dateStr}, 9:00–11:00 PM` : ""}.
 
 Pass: ${ticketCode}
 

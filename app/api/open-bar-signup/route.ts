@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Next open bar session (Fri or Sat 9:30pm)
+    // Next open bar session (Fri or Sat 9:00pm)
     const eventDateISO = getNextOpenBarDatetime();
 
     // Generate unique ticket code (retry on collision)

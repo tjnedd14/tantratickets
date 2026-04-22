@@ -136,7 +136,7 @@ export default function SignupPage() {
                     <div className="display-text text-default text-lg">
                       {formatEventDate(success.eventDatetime)}
                     </div>
-                    <div className="text-sm text-tantra-red font-bold mt-1">9:30 PM — 11:30 PM</div>
+                    <div className="text-sm text-tantra-red font-bold mt-1">9:00 PM — 11:00 PM</div>
                   </div>
                 )}
 
@@ -175,7 +175,7 @@ export default function SignupPage() {
                 <p className="text-sm text-muted">
                   Sign up for a free Open Bar Pass
                   <br />
-                  <span className="text-tantra-red font-bold">Friday & Saturday · 9:30–11:30 PM</span>
+                  <span className="text-tantra-red font-bold">Friday & Saturday · 9:00–11:00 PM</span>
                 </p>
               </div>
 

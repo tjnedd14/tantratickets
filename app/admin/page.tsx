@@ -508,7 +508,7 @@ export default function AdminPage() {
                   <span className="label">OPEN BAR PASS SIGNUPS</span>
                 </div>
                 <p className="text-sm text-muted">
-                  Public signups via <a href="/signup" target="_blank" className="text-tantra-red underline">/signup</a> — free Open Bar Pass valid Fri & Sat, 9:30–11:30 PM.
+                  Public signups via <a href="/signup" target="_blank" className="text-tantra-red underline">/signup</a> — free Open Bar Pass valid Fri & Sat, 9:00–11:00 PM.
                 </p>
               </div>
 
