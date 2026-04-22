@@ -104,7 +104,7 @@ export default function SignupPage() {
         <div className="max-w-md mx-auto">
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <img src={logoUrl} alt="Tantra" className="h-20 w-auto object-contain" style={{ filter: logoFilter }} />
+            <img src={logoUrl} alt="Tantra" className="h-32 w-auto object-contain" style={{ filter: logoFilter }} />
           </div>
 
           {success ? (
