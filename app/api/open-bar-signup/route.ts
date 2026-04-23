@@ -2,18 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
 import {
   isValidEmail,
+  isValidPhone,
   generateOpenBarCode,
   calculateAge,
   getNextOpenBarDatetime,
 } from "@/lib/utils";
 import { buildOpenBarPassPDF } from "@/lib/open-bar-pdf";
 import { sendOpenBarPassEmail } from "@/lib/open-bar-email";
+// import { sendWhatsAppConfirmation } from "@/lib/whatsapp"; // WhatsApp: activate when Meta approval complete
 
 // No admin auth — this endpoint is public
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { full_name, email, date_of_birth } = body;
+    const {
+      full_name,
+      email,
+      date_of_birth,
+      phone,
+      gender,
+      wa_opt_in,
+    } = body;
 
     // Validate name
     if (!full_name || typeof full_name !== "string" || full_name.trim().length < 2) {
@@ -24,6 +33,22 @@ export async function POST(req: NextRequest) {
     if (!email || !isValidEmail(email)) {
       return NextResponse.json(
         { error: "Please enter a valid email address" },
+        { status: 400 }
+      );
+    }
+
+    // Validate phone
+    if (!phone || typeof phone !== "string" || !isValidPhone(phone)) {
+      return NextResponse.json(
+        { error: "Please enter a valid phone number" },
+        { status: 400 }
+      );
+    }
+
+    // Validate gender
+    if (!gender || !["male", "female"].includes(gender)) {
+      return NextResponse.json(
+        { error: "Please select your gender" },
         { status: 400 }
       );
     }
@@ -57,6 +82,8 @@ export async function POST(req: NextRequest) {
     const supabase = getAdminClient();
     const cleanName = full_name.trim();
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = phone.trim().replace(/\s+/g, "");
+    const waOptIn = Boolean(wa_opt_in);
     const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Tantra";
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
 
@@ -103,6 +130,9 @@ export async function POST(req: NextRequest) {
       .insert({
         full_name: cleanName,
         email: cleanEmail,
+        phone: cleanPhone,
+        gender,
+        wa_opt_in: waOptIn,
         date_of_birth,
         ticket_code: ticketCode,
         event_datetime: eventDateISO,
@@ -114,7 +144,6 @@ export async function POST(req: NextRequest) {
 
     if (insertErr || !signup) {
       console.error("Open bar signup insert error:", insertErr);
-      // Unique constraint hit → duplicate email
       if (insertErr?.code === "23505") {
         return NextResponse.json(
           {
@@ -157,6 +186,24 @@ export async function POST(req: NextRequest) {
       console.error("Open bar email error:", err);
       emailError = err.message || "Email failed to send";
     }
+
+    // WhatsApp: activate when Meta approval complete
+    // if (waOptIn) {
+    //   try {
+    //     await sendWhatsAppConfirmation({
+    //       to: cleanPhone,
+    //       fullName: cleanName,
+    //       ticketCode,
+    //       eventDatetime: eventDateISO,
+    //     });
+    //     await supabase
+    //       .from("open_bar_signups")
+    //       .update({ wa_sent: true, wa_sent_at: new Date().toISOString() })
+    //       .eq("id", signup.id);
+    //   } catch (err) {
+    //     console.error("WhatsApp send error:", err);
+    //   }
+    // }
 
     return NextResponse.json({
       success: true,

@@ -46,6 +46,9 @@ type OpenBarSignup = {
   id: string;
   full_name: string;
   email: string;
+  phone: string | null;
+  gender: "male" | "female" | null;
+  wa_opt_in: boolean;
   date_of_birth: string;
   ticket_code: string;
   event_datetime: string | null;
@@ -57,6 +60,7 @@ type OpenBarSignup = {
 
 type Tab = "issue" | "list" | "openbar";
 type CheckInFilter = "all" | "pending" | "checked_in";
+type GenderFilter = "all" | "male" | "female";
 type DateFilterMode = "specific" | "all" | "upcoming";
 
 export default function AdminPage() {
@@ -100,6 +104,7 @@ export default function AdminPage() {
   const [openBarLoading, setOpenBarLoading] = useState(false);
   const [openBarSearch, setOpenBarSearch] = useState("");
   const [openBarFilter, setOpenBarFilter] = useState<CheckInFilter>("all");
+  const [openBarGenderFilter, setOpenBarGenderFilter] = useState<GenderFilter>("all");
   const [openBarCheckingIn, setOpenBarCheckingIn] = useState<Record<string, boolean>>({});
 
   // Modals
@@ -360,11 +365,14 @@ export default function AdminPage() {
   const openBarFiltered = openBarSignups.filter((s) => {
     if (openBarFilter === "pending" && s.checked_in) return false;
     if (openBarFilter === "checked_in" && !s.checked_in) return false;
+    if (openBarGenderFilter === "male" && s.gender !== "male") return false;
+    if (openBarGenderFilter === "female" && s.gender !== "female") return false;
     if (!openBarSearch.trim()) return true;
     const q = openBarSearch.toLowerCase();
     return (
       s.full_name.toLowerCase().includes(q) ||
       s.email.toLowerCase().includes(q) ||
+      (s.phone || "").toLowerCase().includes(q) ||
       s.ticket_code.toLowerCase().includes(q)
     );
   });
@@ -519,16 +527,65 @@ export default function AdminPage() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <input type="text" value={openBarSearch} onChange={(e) => setOpenBarSearch(e.target.value)} placeholder="Search name, email, pass number..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
+                <input type="text" value={openBarSearch} onChange={(e) => setOpenBarSearch(e.target.value)} placeholder="Search name, email, phone, pass number..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
                 <button onClick={() => loadOpenBar()} disabled={openBarLoading} className="btn-outline px-5 py-3 text-xs">
                   {openBarLoading ? "..." : "Refresh"}
                 </button>
               </div>
 
+              {/* Gender ratio stats card */}
+              {openBarSignups.length > 0 && (() => {
+                const maleCount = openBarSignups.filter(s => s.gender === "male").length;
+                const femaleCount = openBarSignups.filter(s => s.gender === "female").length;
+                const unsetCount = openBarSignups.length - maleCount - femaleCount;
+                const total = maleCount + femaleCount;
+                const malePct = total > 0 ? Math.round((maleCount / total) * 100) : 0;
+                const femalePct = total > 0 ? 100 - malePct : 0;
+                const ratioWarning = total > 10 && (malePct > 70 || femalePct > 70);
+                const waOptInCount = openBarSignups.filter(s => s.wa_opt_in).length;
+                const waOptInPct = Math.round((waOptInCount / openBarSignups.length) * 100);
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="border border-[var(--border)] bg-[var(--card)] p-4">
+                      <div className="text-xs tracking-wider text-[var(--muted)] mb-2">GENDER RATIO</div>
+                      <div className="flex items-end gap-2 mb-2">
+                        <span className="text-2xl font-bold">{malePct}<span className="text-sm text-[var(--muted)]">% M</span></span>
+                        <span className="text-[var(--muted)]">·</span>
+                        <span className="text-2xl font-bold">{femalePct}<span className="text-sm text-[var(--muted)]">% F</span></span>
+                      </div>
+                      <div className="h-2 flex rounded-sm overflow-hidden bg-[var(--border)]">
+                        <div className="bg-blue-500" style={{ width: `${malePct}%` }} />
+                        <div className="bg-pink-500" style={{ width: `${femalePct}%` }} />
+                      </div>
+                      {ratioWarning && (
+                        <div className="text-xs text-yellow-500 mt-2">⚠ Skewed ratio — consider promoting to underrepresented side</div>
+                      )}
+                    </div>
+                    <div className="border border-[var(--border)] bg-[var(--card)] p-4">
+                      <div className="text-xs tracking-wider text-[var(--muted)] mb-2">WHATSAPP OPT-IN</div>
+                      <div className="text-2xl font-bold">{waOptInCount}<span className="text-sm text-[var(--muted)]"> / {openBarSignups.length} ({waOptInPct}%)</span></div>
+                      <div className="text-xs text-[var(--muted)] mt-1">Ready for marketing broadcasts</div>
+                    </div>
+                    <div className="border border-[var(--border)] bg-[var(--card)] p-4">
+                      <div className="text-xs tracking-wider text-[var(--muted)] mb-2">TOTAL SIGNUPS</div>
+                      <div className="text-2xl font-bold">{openBarSignups.length}</div>
+                      {unsetCount > 0 && <div className="text-xs text-[var(--muted)] mt-1">{unsetCount} legacy (no gender set)</div>}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="flex gap-2 flex-wrap">
                 <FilterPill active={openBarFilter === "all"} onClick={() => setOpenBarFilter("all")} label={`All (${openBarSignups.length})`} />
                 <FilterPill active={openBarFilter === "pending"} onClick={() => setOpenBarFilter("pending")} label={`Pending (${openBarSignups.filter((s) => !s.checked_in).length})`} />
                 <FilterPill active={openBarFilter === "checked_in"} onClick={() => setOpenBarFilter("checked_in")} label={`Redeemed (${openBarSignups.filter((s) => s.checked_in).length})`} />
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                <FilterPill active={openBarGenderFilter === "all"} onClick={() => setOpenBarGenderFilter("all")} label="All genders" />
+                <FilterPill active={openBarGenderFilter === "male"} onClick={() => setOpenBarGenderFilter("male")} label={`♂ Male (${openBarSignups.filter((s) => s.gender === "male").length})`} />
+                <FilterPill active={openBarGenderFilter === "female"} onClick={() => setOpenBarGenderFilter("female")} label={`♀ Female (${openBarSignups.filter((s) => s.gender === "female").length})`} />
               </div>
 
               <OpenBarTable
@@ -746,10 +803,12 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
           <thead className="bg-deep border-b border-tantra-red">
             <tr className="text-left">
               <th className="px-4 py-4 label">Guest</th>
-              <th className="px-4 py-4 label">Email</th>
-              <th className="px-4 py-4 label">Age</th>
+              <th className="px-3 py-4 label text-center">M/F</th>
+              <th className="px-4 py-4 label">Contact</th>
+              <th className="px-3 py-4 label">Age</th>
               <th className="px-4 py-4 label">Event Night</th>
               <th className="px-4 py-4 label">Pass</th>
+              <th className="px-3 py-4 label text-center">WA</th>
               <th className="px-4 py-4 label">Signed Up</th>
               <th className="px-4 py-4 label text-center">Status</th>
               <th className="px-4 py-4 label text-center">Actions</th>
@@ -757,7 +816,7 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
           </thead>
           <tbody>
             {signups.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted">
+              <tr><td colSpan={10} className="px-4 py-12 text-center text-muted">
                 {totalSignups === 0 ? "No Open Bar signups yet. Share /signup to start." : "No signups match these filters."}
               </td></tr>
             )}
@@ -767,12 +826,27 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
               return (
                 <tr key={s.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${s.checked_in ? "opacity-70" : ""}`}>
                   <td className="px-4 py-3.5"><div className="font-semibold text-default">{s.full_name}</div></td>
-                  <td className="px-4 py-3.5"><div className="text-xs text-muted">{s.email}</div></td>
-                  <td className="px-4 py-3.5"><div className="text-xs text-default font-bold">{age}</div></td>
+                  <td className="px-3 py-3.5 text-center">
+                    {s.gender === "male" && <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 font-bold text-sm" title="Male">♂</span>}
+                    {s.gender === "female" && <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-pink-500/20 text-pink-400 font-bold text-sm" title="Female">♀</span>}
+                    {!s.gender && <span className="text-subtle text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="text-xs text-muted">{s.email}</div>
+                    {s.phone && <div className="text-xs text-default mt-0.5 font-mono">{s.phone}</div>}
+                  </td>
+                  <td className="px-3 py-3.5"><div className="text-xs text-default font-bold">{age}</div></td>
                   <td className="px-4 py-3.5 text-xs whitespace-nowrap">
                     {s.event_datetime ? <span className="text-default font-semibold">{formatEventDate(s.event_datetime)}</span> : <span className="text-subtle">—</span>}
                   </td>
                   <td className="px-4 py-3.5"><span className="font-mono text-default text-xs font-bold">{s.ticket_code}</span></td>
+                  <td className="px-3 py-3.5 text-center">
+                    {s.wa_opt_in ? (
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-500/20 text-green-400 text-sm" title="Opted in to WhatsApp">✓</span>
+                    ) : (
+                      <span className="text-subtle text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3.5 text-xs text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3.5 text-center">
                     <CheckInButton

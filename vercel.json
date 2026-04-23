@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/whatsapp/reminder",
+      "schedule": "0 19 * * 5,6"
+    }
+  ]
+}
