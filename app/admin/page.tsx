@@ -16,6 +16,7 @@ import {
 } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
+import OpenBarAnalyticsPanel from "@/components/OpenBarAnalyticsPanel";
 
 const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
@@ -595,6 +596,8 @@ export default function AdminPage() {
                 onToggleCheckIn={toggleOpenBarCheckIn}
                 onDelete={(s) => setDeletingOpenBar(s)}
               />
+
+              <OpenBarAnalyticsPanel signups={openBarSignups} />
             </div>
           )}
         </div>
@@ -1224,8 +1227,6 @@ function IssueTab(props: any) {
             <h2 className="display-text text-3xl text-default mb-2">Add Guest</h2>
             <p className="text-sm text-muted">Enter client details — they receive one ticket by email.</p>
           </div>
-          <div><label className="label block mb-2">EVENT DATE & TIME</label>
-            <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3.5" /></div>
           <div><label className="label block mb-2">CLIENT NAME</label>
             <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" /></div>
           <div><label className="label block mb-2">EMAIL</label>
@@ -1249,6 +1250,10 @@ function IssueTab(props: any) {
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" /></div>
           <div><label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
             <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Hostess name" /></div>
+          <div className="bg-tantra-red/10 border-2 border-tantra-red p-4">
+            <label className="label block mb-2 text-tantra-red">⚠ EVENT DATE & TIME — CONFIRM BEFORE SENDING</label>
+            <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3.5 text-lg font-bold" />
+          </div>
           {issueError && <div className="bg-tantra-red/10 border border-tantra-red text-red-600 dark:text-red-200 text-sm px-4 py-3">{issueError}</div>}
           <button type="submit" disabled={issueLoading} className="btn-red w-full py-4 text-sm">{issueLoading ? "Sending..." : "Issue Ticket & Send Email"}</button>
         </form>
