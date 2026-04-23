@@ -158,16 +158,16 @@ export default function SignupPage() {
   // MAIN FORM
   return (
     <div className="min-h-screen bg-deep text-default grain">
-      <div className="max-w-md mx-auto px-6 py-12">
-        <div className="flex justify-end mb-6">
+      <div className="max-w-md mx-auto px-6 py-5 md:py-12">
+        <div className="flex justify-end mb-2">
           <ThemeToggle />
         </div>
 
-        <div className="text-center mb-8">
-          <img src={logoUrl} alt="Tantra" className="h-32 w-auto mx-auto mb-6 object-contain" style={{ filter: logoFilter }} />
-          <div className="accent-line mx-auto mb-4" />
-          <p className="label mb-2">COMPLIMENTARY</p>
-          <h1 className="display-text text-4xl md:text-5xl mb-4">OPEN BAR PASS</h1>
+        <div className="text-center mb-6">
+          <img src={logoUrl} alt="Tantra" className="h-16 md:h-28 w-auto mx-auto mb-3 object-contain" style={{ filter: logoFilter }} />
+          <div className="accent-line mx-auto mb-3" />
+          <p className="label mb-1">COMPLIMENTARY</p>
+          <h1 className="display-text text-4xl md:text-5xl mb-3">OPEN BAR PASS</h1>
           <p className="text-muted text-sm">
             Friday &amp; Saturday · <span className="text-tantra-red font-bold">9:00–11:00 PM</span>
           </p>
