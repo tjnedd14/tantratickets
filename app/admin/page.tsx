@@ -60,7 +60,7 @@ type OpenBarSignup = {
   created_at: string;
 };
 
-type Tab = "issue" | "list" | "openbar";
+type Tab = "issue" | "list" | "openbar" | "reminders";
 type CheckInFilter = "all" | "pending" | "checked_in";
 type GenderFilter = "all" | "male" | "female";
 type DateFilterMode = "specific" | "all" | "upcoming";
@@ -461,6 +461,9 @@ export default function AdminPage() {
             <TabButton active={tab === "openbar"} onClick={() => setTab("openbar")}>
               Open Bar<span className="ml-2 text-tantra-red">({openBarSignups.length})</span>
             </TabButton>
+            <TabButton active={tab === "reminders"} onClick={() => setTab("reminders")}>
+              Reminders
+            </TabButton>
           </div>
 
           {tab === "issue" && (
@@ -601,6 +604,10 @@ export default function AdminPage() {
 
               <OpenBarAnalyticsPanel signups={openBarSignups} />
             </div>
+          )}
+
+          {tab === "reminders" && (
+            <RemindersTab password={password} />
           )}
         </div>
       </div>
@@ -1267,3 +1274,213 @@ function IssueTab(props: any) {
     </div>
   );
 }
+
+function RemindersTab({ password }: { password: string }) {
+  const [eventDate, setEventDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [audience, setAudience] = useState<"openbar" | "reservations" | "both">("both");
+  const [imageUrls, setImageUrls] = useState<string[]>(["", "", ""]);
+  const [customMessage, setCustomMessage] = useState("");
+  const [preview, setPreview] = useState<{ openbar_count: number; reservations_count: number; total: number } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<any>(null);
+
+  async function loadPreview() {
+    setPreviewLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/send-reminders/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ event_date: eventDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Preview failed");
+      setPreview(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function handleSend(confirmDoubleSend = false) {
+    setSendLoading(true);
+    setError("");
+    setResult(null);
+    setDuplicateWarning(null);
+    try {
+      const res = await fetch("/api/send-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({
+          audience,
+          event_date: eventDate,
+          image_urls: imageUrls.filter((u) => u.trim().length > 0),
+          custom_message: customMessage.trim() || undefined,
+          confirm_double_send: confirmDoubleSend,
+        }),
+      });
+      const data = await res.json();
+      if (res.status === 409 && data.error === "duplicate") {
+        setDuplicateWarning(data);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || "Send failed");
+      setResult({ sent: data.sent, failed: data.failed, total: data.total });
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSendLoading(false);
+    }
+  }
+
+  const recipientCount =
+    audience === "both"
+      ? preview?.total || 0
+      : audience === "openbar"
+      ? preview?.openbar_count || 0
+      : preview?.reservations_count || 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 mb-3">
+        <span className="accent-line"></span>
+        <span className="label">SEND REMINDERS</span>
+      </div>
+      <h2 className="display-text text-3xl text-default">Event Reminder Email</h2>
+      <p className="text-muted text-sm">
+        Send a branded reminder to everyone who signed up for a specific event night. Includes their pass/ticket code and optional event flyers.
+      </p>
+
+      <div className="bg-card tantra-border-strong p-6 md:p-8 space-y-5">
+        {/* Audience */}
+        <div>
+          <label className="label block mb-3">AUDIENCE</label>
+          <div className="grid grid-cols-3 gap-2">
+            <button type="button" onClick={() => setAudience("openbar")} className={`py-3 text-xs font-bold tracking-widest border transition-all ${audience === "openbar" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}>
+              OPEN BAR
+            </button>
+            <button type="button" onClick={() => setAudience("reservations")} className={`py-3 text-xs font-bold tracking-widest border transition-all ${audience === "reservations" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}>
+              RESERVATIONS
+            </button>
+            <button type="button" onClick={() => setAudience("both")} className={`py-3 text-xs font-bold tracking-widest border transition-all ${audience === "both" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}>
+              BOTH
+            </button>
+          </div>
+        </div>
+
+        {/* Event date */}
+        <div>
+          <label className="label block mb-2">EVENT DATE</label>
+          <div className="flex gap-2">
+            <input type="date" value={eventDate} onChange={(e) => { setEventDate(e.target.value); setPreview(null); }} className="tantra-input flex-1 px-4 py-3" />
+            <button type="button" onClick={loadPreview} disabled={previewLoading} className="btn-outline px-4 py-3 text-xs whitespace-nowrap">
+              {previewLoading ? "..." : "Count Recipients"}
+            </button>
+          </div>
+          {preview && (
+            <div className="mt-3 p-3 bg-deep tantra-border text-xs">
+              <div className="flex justify-between"><span className="text-muted">Open Bar signups (pending):</span><span className="font-bold">{preview.openbar_count}</span></div>
+              <div className="flex justify-between"><span className="text-muted">Reservations (pending):</span><span className="font-bold">{preview.reservations_count}</span></div>
+              <div className="flex justify-between mt-2 pt-2 border-t border-[var(--border)]"><span className="text-default font-bold">Will send to:</span><span className="font-bold text-tantra-red">{recipientCount} guest{recipientCount === 1 ? "" : "s"}</span></div>
+            </div>
+          )}
+        </div>
+
+        {/* Image URLs */}
+        <div>
+          <label className="label block mb-2">IMAGE URLS <span className="normal-case tracking-normal text-subtle">(optional · up to 3)</span></label>
+          <div className="space-y-2">
+            {imageUrls.map((url, i) => (
+              <div key={i} className="flex gap-2">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => {
+                    const next = [...imageUrls];
+                    next[i] = e.target.value;
+                    setImageUrls(next);
+                  }}
+                  placeholder={i === 0 ? "https://i.imgur.com/xxxxx.jpg (main flyer)" : `https://i.imgur.com/... (extra ${i + 1})`}
+                  className="tantra-input flex-1 px-4 py-3 text-sm"
+                />
+                {url.trim() && (
+                  <div className="w-12 h-12 flex-shrink-0 bg-deep tantra-border overflow-hidden">
+                    <img src={url} alt="" className="w-full h-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-subtle mt-2">Paste full URLs (imgur, Wix CDN, etc). Images show at the top of the email.</p>
+        </div>
+
+        {/* Custom message */}
+        <div>
+          <label className="label block mb-2">CUSTOM MESSAGE <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+          <textarea
+            value={customMessage}
+            onChange={(e) => setCustomMessage(e.target.value)}
+            placeholder="e.g. Tonight Musio Monks is guest DJ — don't miss it"
+            rows={3}
+            className="tantra-input w-full px-4 py-3 text-sm"
+          />
+        </div>
+
+        {/* Error */}
+        {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
+
+        {/* Duplicate warning */}
+        {duplicateWarning && (
+          <div className="bg-yellow-500/10 border border-yellow-500 text-yellow-500 text-sm px-4 py-3 space-y-2">
+            <div className="font-bold">⚠ Reminders already sent today for this date</div>
+            <div className="text-xs">
+              {duplicateWarning.previous?.map((p: any, i: number) => (
+                <div key={i}>· {p.audience}: {p.total_sent} sent at {new Date(p.created_at).toLocaleTimeString()}</div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2">
+              <button onClick={() => setDuplicateWarning(null)} className="btn-outline px-3 py-2 text-xs">Cancel</button>
+              <button onClick={() => handleSend(true)} disabled={sendLoading} className="btn-red px-3 py-2 text-xs">Send Again Anyway</button>
+            </div>
+          </div>
+        )}
+
+        {/* Result */}
+        {result && (
+          <div className="bg-green-500/10 border border-green-500 text-green-500 text-sm px-4 py-3">
+            <div className="font-bold">✓ Reminders sent</div>
+            <div className="text-xs mt-1">
+              {result.sent} of {result.total} delivered{result.failed > 0 && ` · ${result.failed} failed`}
+            </div>
+          </div>
+        )}
+
+        {/* Send button */}
+        {!duplicateWarning && (
+          <button
+            type="button"
+            onClick={() => handleSend(false)}
+            disabled={sendLoading || !preview || recipientCount === 0}
+            className="btn-red w-full py-4 text-sm"
+          >
+            {sendLoading
+              ? `SENDING TO ${recipientCount} GUEST${recipientCount === 1 ? "" : "S"}…`
+              : !preview
+              ? "COUNT RECIPIENTS FIRST"
+              : recipientCount === 0
+              ? "NO RECIPIENTS FOR THIS DATE"
+              : `SEND REMINDER TO ${recipientCount} GUEST${recipientCount === 1 ? "" : "S"}`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
