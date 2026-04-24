@@ -17,6 +17,7 @@ import {
 import { useTheme } from "@/lib/theme";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
 import OpenBarAnalyticsPanel from "@/components/OpenBarAnalyticsPanel";
+import FloorPlanPicker from "@/components/FloorPlanPicker";
 
 const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
@@ -479,6 +480,7 @@ export default function AdminPage() {
               eventDatetime={eventDatetime} setEventDatetime={setEventDatetime}
               issueError={issueError} issueLoading={issueLoading}
               onSubmit={handleIssueSubmit}
+              registrations={registrations}
             />
           )}
 
@@ -1172,7 +1174,26 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
 }
 
 function IssueTab(props: any) {
-  const { issueSuccess, setIssueSuccess, fullName, setFullName, email, setEmail, phone, setPhone, groupSize, setGroupSize, tableNumber, setTableNumber, notes, setNotes, issuedBy, setIssuedBy, eventDatetime, setEventDatetime, issueError, issueLoading, onSubmit } = props;
+  const { issueSuccess, setIssueSuccess, fullName, setFullName, email, setEmail, phone, setPhone, groupSize, setGroupSize, tableNumber, setTableNumber, notes, setNotes, issuedBy, setIssuedBy, eventDatetime, setEventDatetime, issueError, issueLoading, onSubmit, registrations } = props;
+
+  // Compute globally booked tables — any table currently assigned across ALL registrations
+  const bookedTables = new Set<string>();
+  for (const r of (registrations || [])) {
+    if (r.table_number && r.table_number.trim()) {
+      // Normalize: uppercase to match table IDs like V3, T5
+      bookedTables.add(r.table_number.trim().toUpperCase());
+    }
+  }
+
+  function handleConflict(tableId: string): boolean {
+    const existing = (registrations || []).find((r: any) =>
+      (r.table_number || "").trim().toUpperCase() === tableId
+    );
+    const msg = existing
+      ? `⚠ Table ${tableId.startsWith("T3B") ? "T3" : tableId} is already booked for ${existing.full_name}.\n\nAre you sure you want to double-book it?`
+      : `⚠ Table ${tableId} is already booked. Double-book it anyway?`;
+    return window.confirm(msg);
+  }
 
   return (
     <div className="max-w-xl">
@@ -1257,8 +1278,15 @@ function IssueTab(props: any) {
               <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
             </div>
           </div>
-          <div><label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
-            <input type="text" value={tableNumber} onChange={(e) => setTableNumber(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. 12, VIP-3, Booth A" /></div>
+          <div>
+            <label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional — tap to select)</span></label>
+            <FloorPlanPicker
+              value={tableNumber}
+              onChange={setTableNumber}
+              bookedTables={bookedTables}
+              onConflict={handleConflict}
+            />
+          </div>
           <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" /></div>
           <div><label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
