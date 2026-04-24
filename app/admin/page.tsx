@@ -1176,22 +1176,36 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
 function IssueTab(props: any) {
   const { issueSuccess, setIssueSuccess, fullName, setFullName, email, setEmail, phone, setPhone, groupSize, setGroupSize, tableNumber, setTableNumber, notes, setNotes, issuedBy, setIssuedBy, eventDatetime, setEventDatetime, issueError, issueLoading, onSubmit, registrations } = props;
 
-  // Compute globally booked tables — any table currently assigned across ALL registrations
-  const bookedTables = new Set<string>();
-  for (const r of (registrations || [])) {
-    if (r.table_number && r.table_number.trim()) {
-      // Normalize: uppercase to match table IDs like V3, T5
-      bookedTables.add(r.table_number.trim().toUpperCase());
+  // Extract the date-only portion (YYYY-MM-DD) from the selected event datetime
+  // so we only block tables booked for the SAME calendar day.
+  const selectedDateKey = eventDatetime ? eventDatetime.slice(0, 10) : null;
+
+  // Map of tableId -> registration booked for the same day
+  const bookedOnSameDate = new Map<string, any>();
+  if (selectedDateKey) {
+    for (const r of (registrations || [])) {
+      if (!r.table_number || !r.table_number.trim()) continue;
+      if (!r.event_datetime) continue;
+      const regDateKey = new Date(r.event_datetime).toISOString().slice(0, 10);
+      if (regDateKey !== selectedDateKey) continue;
+      const tableId = r.table_number.trim().toUpperCase();
+      // Only keep first (or the most recent); any match is enough
+      if (!bookedOnSameDate.has(tableId)) {
+        bookedOnSameDate.set(tableId, r);
+      }
     }
   }
+  const bookedTables = new Set(bookedOnSameDate.keys());
 
   function handleConflict(tableId: string): boolean {
-    const existing = (registrations || []).find((r: any) =>
-      (r.table_number || "").trim().toUpperCase() === tableId
-    );
+    const existing = bookedOnSameDate.get(tableId);
+    const displayTable = tableId.startsWith("T3B") ? "T3" : tableId;
+    const dateLabel = selectedDateKey
+      ? new Date(selectedDateKey + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+      : "this date";
     const msg = existing
-      ? `⚠ Table ${tableId.startsWith("T3B") ? "T3" : tableId} is already booked for ${existing.full_name}.\n\nAre you sure you want to double-book it?`
-      : `⚠ Table ${tableId} is already booked. Double-book it anyway?`;
+      ? `⚠ Table ${displayTable} is already booked for ${existing.full_name} on ${dateLabel}.\n\nAre you sure you want to double-book it?`
+      : `⚠ Table ${displayTable} is already booked on ${dateLabel}. Double-book it anyway?`;
     return window.confirm(msg);
   }
 
@@ -1280,6 +1294,15 @@ function IssueTab(props: any) {
           </div>
           <div>
             <label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional — tap to select)</span></label>
+            {selectedDateKey ? (
+              <p className="text-xs text-muted mb-2">
+                Availability for <span className="text-default font-semibold">{new Date(selectedDateKey + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-yellow-500 mb-2">
+                ⚠ Select an event date below to see table availability
+              </p>
+            )}
             <FloorPlanPicker
               value={tableNumber}
               onChange={setTableNumber}
