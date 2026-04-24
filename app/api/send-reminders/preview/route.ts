@@ -8,8 +8,8 @@ function checkAuth(req: NextRequest): boolean {
 
 /**
  * POST /api/send-reminders/preview
- * Body: { audience, event_date }
- * Returns: { openbar_count, reservations_count, total }
+ * Body: { event_date: "YYYY-MM-DD" }
+ * Returns: { openbar: Recipient[], reservations: Recipient[] }
  */
 export async function POST(req: NextRequest) {
   if (!checkAuth(req)) {
@@ -28,33 +28,51 @@ export async function POST(req: NextRequest) {
     const dayStart = new Date(`${event_date}T00:00:00`);
     const dayEnd = new Date(`${event_date}T23:59:59.999`);
 
-    // Open Bar: count those not yet checked in
-    const { count: openBarCount } = await supabase
+    // Open Bar: those not yet checked in
+    const { data: openBarData } = await supabase
       .from("open_bar_signups")
-      .select("id", { count: "exact", head: true })
+      .select("id, full_name, email, ticket_code, checked_in")
       .gte("event_datetime", dayStart.toISOString())
       .lte("event_datetime", dayEnd.toISOString())
-      .eq("checked_in", false);
+      .eq("checked_in", false)
+      .order("full_name", { ascending: true });
 
-    // Reservations: count registrations with event on that date
+    const openbar = (openBarData || []).map((r: any) => ({
+      id: r.id,
+      email: r.email,
+      full_name: r.full_name,
+      ticket_code: r.ticket_code,
+    }));
+
+    // Reservations: with event on that date
     const { data: regs } = await supabase
       .from("registrations")
-      .select(`id, tickets ( checked_in )`)
+      .select(`
+        id, full_name, email, group_size, table_number,
+        tickets ( ticket_code, checked_in )
+      `)
       .gte("event_datetime", dayStart.toISOString())
-      .lte("event_datetime", dayEnd.toISOString());
+      .lte("event_datetime", dayEnd.toISOString())
+      .order("full_name", { ascending: true });
 
-    // Filter out those where all tickets are checked in
-    let reservationsCount = 0;
+    const reservations: any[] = [];
     for (const r of regs || []) {
       const tickets = ((r as any).tickets || []) as any[];
       const allCheckedIn = tickets.length > 0 && tickets.every((t) => t.checked_in);
-      if (!allCheckedIn) reservationsCount++;
+      if (allCheckedIn) continue;
+      reservations.push({
+        id: r.id,
+        email: r.email,
+        full_name: r.full_name,
+        ticket_code: tickets[0]?.ticket_code || null,
+        group_size: r.group_size,
+        table_number: r.table_number,
+      });
     }
 
     return NextResponse.json({
-      openbar_count: openBarCount || 0,
-      reservations_count: reservationsCount,
-      total: (openBarCount || 0) + reservationsCount,
+      openbar,
+      reservations,
     });
   } catch (err: any) {
     console.error("Preview error:", err);

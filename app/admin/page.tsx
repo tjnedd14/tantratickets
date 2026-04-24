@@ -1276,23 +1276,38 @@ function IssueTab(props: any) {
 }
 
 function RemindersTab({ password }: { password: string }) {
+  type Recipient = {
+    id: string;
+    email: string;
+    full_name: string;
+    ticket_code: string | null;
+    group_size?: number;
+    table_number?: string | null;
+  };
+
   const [eventDate, setEventDate] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
-  const [audience, setAudience] = useState<"openbar" | "reservations" | "both">("both");
+  const [openbarRecipients, setOpenbarRecipients] = useState<Recipient[]>([]);
+  const [reservationRecipients, setReservationRecipients] = useState<Recipient[]>([]);
+  const [selectedOpenbar, setSelectedOpenbar] = useState<Set<string>>(new Set());
+  const [selectedReservations, setSelectedReservations] = useState<Set<string>>(new Set());
+  const [loaded, setLoaded] = useState(false);
+  const [searchFilter, setSearchFilter] = useState("");
+
   const [imageUrls, setImageUrls] = useState<string[]>(["", "", ""]);
   const [customMessage, setCustomMessage] = useState("");
-  const [preview, setPreview] = useState<{ openbar_count: number; reservations_count: number; total: number } | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  const [loadingList, setLoadingList] = useState(false);
   const [sendLoading, setSendLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<any>(null);
 
-  async function loadPreview() {
-    setPreviewLoading(true);
+  async function loadRecipients() {
+    setLoadingList(true);
     setError("");
+    setResult(null);
     try {
       const res = await fetch("/api/send-reminders/preview", {
         method: "POST",
@@ -1300,12 +1315,48 @@ function RemindersTab({ password }: { password: string }) {
         body: JSON.stringify({ event_date: eventDate }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Preview failed");
-      setPreview(data);
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      setOpenbarRecipients(data.openbar || []);
+      setReservationRecipients(data.reservations || []);
+      // Default: all selected
+      setSelectedOpenbar(new Set((data.openbar || []).map((r: Recipient) => r.id)));
+      setSelectedReservations(new Set((data.reservations || []).map((r: Recipient) => r.id)));
+      setLoaded(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setPreviewLoading(false);
+      setLoadingList(false);
+    }
+  }
+
+  function toggleOne(group: "openbar" | "reservation", id: string) {
+    if (group === "openbar") {
+      const next = new Set(selectedOpenbar);
+      next.has(id) ? next.delete(id) : next.add(id);
+      setSelectedOpenbar(next);
+    } else {
+      const next = new Set(selectedReservations);
+      next.has(id) ? next.delete(id) : next.add(id);
+      setSelectedReservations(next);
+    }
+  }
+
+  function toggleAll(group: "openbar" | "reservation", filtered: Recipient[]) {
+    const allIds = filtered.map((r) => r.id);
+    if (group === "openbar") {
+      const current = selectedOpenbar;
+      const allSelected = allIds.every((id) => current.has(id));
+      const next = new Set(current);
+      if (allSelected) allIds.forEach((id) => next.delete(id));
+      else allIds.forEach((id) => next.add(id));
+      setSelectedOpenbar(next);
+    } else {
+      const current = selectedReservations;
+      const allSelected = allIds.every((id) => current.has(id));
+      const next = new Set(current);
+      if (allSelected) allIds.forEach((id) => next.delete(id));
+      else allIds.forEach((id) => next.add(id));
+      setSelectedReservations(next);
     }
   }
 
@@ -1319,8 +1370,9 @@ function RemindersTab({ password }: { password: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-password": password },
         body: JSON.stringify({
-          audience,
           event_date: eventDate,
+          openbar_ids: Array.from(selectedOpenbar),
+          reservation_ids: Array.from(selectedReservations),
           image_urls: imageUrls.filter((u) => u.trim().length > 0),
           custom_message: customMessage.trim() || undefined,
           confirm_double_send: confirmDoubleSend,
@@ -1340,12 +1392,20 @@ function RemindersTab({ password }: { password: string }) {
     }
   }
 
-  const recipientCount =
-    audience === "both"
-      ? preview?.total || 0
-      : audience === "openbar"
-      ? preview?.openbar_count || 0
-      : preview?.reservations_count || 0;
+  // Apply search filter to both lists
+  const q = searchFilter.trim().toLowerCase();
+  const filteredOpenbar = q
+    ? openbarRecipients.filter(
+        (r) => r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || (r.ticket_code || "").toLowerCase().includes(q)
+      )
+    : openbarRecipients;
+  const filteredReservations = q
+    ? reservationRecipients.filter(
+        (r) => r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || (r.ticket_code || "").toLowerCase().includes(q)
+      )
+    : reservationRecipients;
+
+  const totalSelected = selectedOpenbar.size + selectedReservations.size;
 
   return (
     <div className="space-y-5">
@@ -1355,43 +1415,137 @@ function RemindersTab({ password }: { password: string }) {
       </div>
       <h2 className="display-text text-3xl text-default">Event Reminder Email</h2>
       <p className="text-muted text-sm">
-        Send a branded reminder to everyone who signed up for a specific event night. Includes their pass/ticket code and optional event flyers.
+        Send a branded reminder to selected guests. You can cherry-pick specific people after loading the list.
       </p>
 
       <div className="bg-card tantra-border-strong p-6 md:p-8 space-y-5">
-        {/* Audience */}
+        {/* Event date + load */}
         <div>
-          <label className="label block mb-3">AUDIENCE</label>
-          <div className="grid grid-cols-3 gap-2">
-            <button type="button" onClick={() => setAudience("openbar")} className={`py-3 text-xs font-bold tracking-widest border transition-all ${audience === "openbar" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}>
-              OPEN BAR
-            </button>
-            <button type="button" onClick={() => setAudience("reservations")} className={`py-3 text-xs font-bold tracking-widest border transition-all ${audience === "reservations" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}>
-              RESERVATIONS
-            </button>
-            <button type="button" onClick={() => setAudience("both")} className={`py-3 text-xs font-bold tracking-widest border transition-all ${audience === "both" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}>
-              BOTH
+          <label className="label block mb-2">EVENT DATE</label>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={eventDate}
+              onChange={(e) => {
+                setEventDate(e.target.value);
+                setLoaded(false);
+                setResult(null);
+              }}
+              className="tantra-input flex-1 px-4 py-3"
+            />
+            <button type="button" onClick={loadRecipients} disabled={loadingList} className="btn-outline px-4 py-3 text-xs whitespace-nowrap">
+              {loadingList ? "Loading..." : "Load Recipients"}
             </button>
           </div>
         </div>
 
-        {/* Event date */}
-        <div>
-          <label className="label block mb-2">EVENT DATE</label>
-          <div className="flex gap-2">
-            <input type="date" value={eventDate} onChange={(e) => { setEventDate(e.target.value); setPreview(null); }} className="tantra-input flex-1 px-4 py-3" />
-            <button type="button" onClick={loadPreview} disabled={previewLoading} className="btn-outline px-4 py-3 text-xs whitespace-nowrap">
-              {previewLoading ? "..." : "Count Recipients"}
-            </button>
-          </div>
-          {preview && (
-            <div className="mt-3 p-3 bg-deep tantra-border text-xs">
-              <div className="flex justify-between"><span className="text-muted">Open Bar signups (pending):</span><span className="font-bold">{preview.openbar_count}</span></div>
-              <div className="flex justify-between"><span className="text-muted">Reservations (pending):</span><span className="font-bold">{preview.reservations_count}</span></div>
-              <div className="flex justify-between mt-2 pt-2 border-t border-[var(--border)]"><span className="text-default font-bold">Will send to:</span><span className="font-bold text-tantra-red">{recipientCount} guest{recipientCount === 1 ? "" : "s"}</span></div>
-            </div>
-          )}
-        </div>
+        {/* Recipient lists */}
+        {loaded && (
+          <>
+            {openbarRecipients.length === 0 && reservationRecipients.length === 0 ? (
+              <div className="bg-deep tantra-border p-6 text-center text-muted text-sm">
+                No pending guests for this date.
+              </div>
+            ) : (
+              <>
+                {/* Search filter */}
+                <input
+                  type="text"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Filter by name, email, or pass code..."
+                  className="tantra-input w-full px-4 py-3 text-sm"
+                />
+
+                {/* Open Bar list */}
+                {openbarRecipients.length > 0 && (
+                  <div className="border border-[var(--border)] bg-deep">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-card">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={filteredOpenbar.length > 0 && filteredOpenbar.every((r) => selectedOpenbar.has(r.id))}
+                          onChange={() => toggleAll("openbar", filteredOpenbar)}
+                          className="w-4 h-4 accent-tantra-red cursor-pointer"
+                        />
+                        <span className="label">OPEN BAR</span>
+                        <span className="text-xs text-muted">
+                          {selectedOpenbar.size} / {openbarRecipients.length} selected
+                        </span>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {filteredOpenbar.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-xs text-muted">No matches for this filter</div>
+                      ) : (
+                        filteredOpenbar.map((r) => (
+                          <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)] last:border-b-0 hover:bg-surface cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedOpenbar.has(r.id)}
+                              onChange={() => toggleOne("openbar", r.id)}
+                              className="w-4 h-4 accent-tantra-red cursor-pointer flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-default truncate">{r.full_name}</div>
+                              <div className="text-xs text-muted truncate">{r.email}</div>
+                            </div>
+                            <div className="font-mono text-xs text-subtle flex-shrink-0">{r.ticket_code}</div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reservations list */}
+                {reservationRecipients.length > 0 && (
+                  <div className="border border-[var(--border)] bg-deep">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-card">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={filteredReservations.length > 0 && filteredReservations.every((r) => selectedReservations.has(r.id))}
+                          onChange={() => toggleAll("reservation", filteredReservations)}
+                          className="w-4 h-4 accent-tantra-red cursor-pointer"
+                        />
+                        <span className="label">RESERVATIONS</span>
+                        <span className="text-xs text-muted">
+                          {selectedReservations.size} / {reservationRecipients.length} selected
+                        </span>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {filteredReservations.length === 0 ? (
+                        <div className="px-4 py-6 text-center text-xs text-muted">No matches for this filter</div>
+                      ) : (
+                        filteredReservations.map((r) => (
+                          <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)] last:border-b-0 hover:bg-surface cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedReservations.has(r.id)}
+                              onChange={() => toggleOne("reservation", r.id)}
+                              className="w-4 h-4 accent-tantra-red cursor-pointer flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-default truncate">
+                                {r.full_name}
+                                {r.group_size && <span className="text-xs text-muted ml-2">· {r.group_size} guest{r.group_size === 1 ? "" : "s"}</span>}
+                                {r.table_number && <span className="text-xs text-muted ml-2">· Table {r.table_number}</span>}
+                              </div>
+                              <div className="text-xs text-muted truncate">{r.email}</div>
+                            </div>
+                            <div className="font-mono text-xs text-subtle flex-shrink-0">{r.ticket_code}</div>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
 
         {/* Image URLs */}
         <div>
@@ -1433,10 +1587,8 @@ function RemindersTab({ password }: { password: string }) {
           />
         </div>
 
-        {/* Error */}
         {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
 
-        {/* Duplicate warning */}
         {duplicateWarning && (
           <div className="bg-yellow-500/10 border border-yellow-500 text-yellow-500 text-sm px-4 py-3 space-y-2">
             <div className="font-bold">⚠ Reminders already sent today for this date</div>
@@ -1452,7 +1604,6 @@ function RemindersTab({ password }: { password: string }) {
           </div>
         )}
 
-        {/* Result */}
         {result && (
           <div className="bg-green-500/10 border border-green-500 text-green-500 text-sm px-4 py-3">
             <div className="font-bold">✓ Reminders sent</div>
@@ -1462,21 +1613,20 @@ function RemindersTab({ password }: { password: string }) {
           </div>
         )}
 
-        {/* Send button */}
         {!duplicateWarning && (
           <button
             type="button"
             onClick={() => handleSend(false)}
-            disabled={sendLoading || !preview || recipientCount === 0}
+            disabled={sendLoading || !loaded || totalSelected === 0}
             className="btn-red w-full py-4 text-sm"
           >
             {sendLoading
-              ? `SENDING TO ${recipientCount} GUEST${recipientCount === 1 ? "" : "S"}…`
-              : !preview
-              ? "COUNT RECIPIENTS FIRST"
-              : recipientCount === 0
-              ? "NO RECIPIENTS FOR THIS DATE"
-              : `SEND REMINDER TO ${recipientCount} GUEST${recipientCount === 1 ? "" : "S"}`}
+              ? `SENDING TO ${totalSelected} GUEST${totalSelected === 1 ? "" : "S"}…`
+              : !loaded
+              ? "LOAD RECIPIENTS FIRST"
+              : totalSelected === 0
+              ? "SELECT AT LEAST ONE RECIPIENT"
+              : `SEND REMINDER TO ${totalSelected} GUEST${totalSelected === 1 ? "" : "S"}`}
           </button>
         )}
       </div>

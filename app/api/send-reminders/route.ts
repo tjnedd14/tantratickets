@@ -10,11 +10,12 @@ function checkAuth(req: NextRequest): boolean {
 /**
  * POST /api/send-reminders
  * Body: {
- *   audience: "openbar" | "reservations" | "both",
- *   event_date: "YYYY-MM-DD",         // which event night to target
- *   image_urls: string[],              // 0-3 image URLs
- *   custom_message?: string,           // optional extra note
- *   confirm_double_send?: boolean     // true to override double-send warning
+ *   event_date: "YYYY-MM-DD",
+ *   openbar_ids: string[],        // signup IDs from preview
+ *   reservation_ids: string[],    // registration IDs from preview
+ *   image_urls: string[],
+ *   custom_message?: string,
+ *   confirm_double_send?: boolean
  * }
  */
 export async function POST(req: NextRequest) {
@@ -24,14 +25,24 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { audience, event_date, image_urls, custom_message, confirm_double_send } = body;
-
-    if (!["openbar", "reservations", "both"].includes(audience)) {
-      return NextResponse.json({ error: "Invalid audience" }, { status: 400 });
-    }
+    const {
+      event_date,
+      openbar_ids,
+      reservation_ids,
+      image_urls,
+      custom_message,
+      confirm_double_send,
+    } = body;
 
     if (!event_date || !/^\d{4}-\d{2}-\d{2}$/.test(event_date)) {
       return NextResponse.json({ error: "Invalid event_date (YYYY-MM-DD)" }, { status: 400 });
+    }
+
+    const openBarIds: string[] = Array.isArray(openbar_ids) ? openbar_ids.filter((x) => typeof x === "string") : [];
+    const reservationIds: string[] = Array.isArray(reservation_ids) ? reservation_ids.filter((x) => typeof x === "string") : [];
+
+    if (openBarIds.length === 0 && reservationIds.length === 0) {
+      return NextResponse.json({ error: "No recipients selected" }, { status: 400 });
     }
 
     const cleanImages: string[] = Array.isArray(image_urls)
@@ -42,7 +53,15 @@ export async function POST(req: NextRequest) {
     const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Tantra Night Club";
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
 
-    // Check if reminders were already sent today for this event_date
+    // Derive audience for logging
+    const audience =
+      openBarIds.length > 0 && reservationIds.length > 0
+        ? "both"
+        : openBarIds.length > 0
+        ? "openbar"
+        : "reservations";
+
+    // Check for duplicate sends
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const { data: recentLogs } = await supabase
@@ -55,18 +74,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: "duplicate",
-          message: `Reminders for ${event_date} were already sent today. Send again anyway?`,
+          message: `Reminders for ${event_date} were already sent today.`,
           previous: recentLogs,
         },
         { status: 409 }
       );
     }
 
-    // Build target date range for the event (whole day in Aruba local approx)
-    const dayStart = new Date(`${event_date}T00:00:00`);
-    const dayEnd = new Date(`${event_date}T23:59:59.999`);
-
-    // Collect recipients
     type Recipient = {
       email: string;
       fullName: string;
@@ -78,13 +92,12 @@ export async function POST(req: NextRequest) {
     };
     const recipients: Recipient[] = [];
 
-    if (audience === "openbar" || audience === "both") {
+    // Fetch selected Open Bar signups
+    if (openBarIds.length > 0) {
       const { data: openBar } = await supabase
         .from("open_bar_signups")
         .select("full_name, email, event_datetime, ticket_code")
-        .gte("event_datetime", dayStart.toISOString())
-        .lte("event_datetime", dayEnd.toISOString())
-        .eq("checked_in", false);
+        .in("id", openBarIds);
 
       for (const s of openBar || []) {
         recipients.push({
@@ -97,21 +110,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (audience === "reservations" || audience === "both") {
-      // For reservations we need to also grab the ticket code (one ticket per reservation)
+    // Fetch selected reservations
+    if (reservationIds.length > 0) {
       const { data: regs } = await supabase
         .from("registrations")
         .select(`
-          full_name, email, event_datetime, group_size, table_number,
+          id, full_name, email, event_datetime, group_size, table_number,
           tickets ( ticket_code, checked_in )
         `)
-        .gte("event_datetime", dayStart.toISOString())
-        .lte("event_datetime", dayEnd.toISOString());
+        .in("id", reservationIds);
 
       for (const r of regs || []) {
-        const tickets = (r.tickets || []) as any[];
-        const allCheckedIn = tickets.length > 0 && tickets.every((t) => t.checked_in);
-        if (allCheckedIn) continue; // skip if everyone already checked in
+        const tickets = ((r as any).tickets || []) as any[];
         const firstTicket = tickets[0];
         recipients.push({
           email: r.email,
@@ -131,11 +141,10 @@ export async function POST(req: NextRequest) {
         total: 0,
         sent: 0,
         failed: 0,
-        message: "No recipients found for that date.",
+        message: "No recipients found for the selected IDs.",
       });
     }
 
-    // Send emails (with small delay between each to not trigger Resend rate limits)
     let sent = 0;
     let failed = 0;
     const failures: { email: string; error: string }[] = [];
@@ -160,11 +169,10 @@ export async function POST(req: NextRequest) {
         failed++;
         failures.push({ email: r.email, error: err?.message || "send failed" });
       }
-      // Small pause to avoid Resend rate limit (2 req/sec free tier)
       await new Promise((res) => setTimeout(res, 600));
     }
 
-    // Log the send
+    // Log
     await supabase.from("reminder_logs").insert({
       audience,
       event_date,
