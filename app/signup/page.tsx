@@ -14,6 +14,7 @@ export default function SignupPage() {
   const [phone, setPhone] = useState("+297 ");
   const [gender, setGender] = useState<"male" | "female" | "">("");
   const [dob, setDob] = useState("");
+  const [location, setLocation] = useState("");
   const [waOptIn, setWaOptIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -55,6 +56,11 @@ export default function SignupPage() {
       return;
     }
 
+    if (location.trim().length < 2) {
+      setError("Please enter where you're from");
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/open-bar-signup", {
@@ -67,6 +73,7 @@ export default function SignupPage() {
           gender,
           wa_opt_in: waOptIn,
           date_of_birth: dob,
+          location: location.trim(),
         }),
       });
       const data = await res.json();
@@ -253,6 +260,20 @@ export default function SignupPage() {
                 required
               />
               <p className="text-xs text-muted mt-1">Must be 18+ to receive the pass.</p>
+            </div>
+
+            <div>
+              <label className="label block mb-2">WHERE ARE YOU FROM?</label>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="e.g. Oranjestad, Aruba · New York, USA"
+                className="tantra-input w-full px-4 py-3"
+                required
+                autoComplete="address-level2"
+              />
+              <p className="text-xs text-muted mt-1">City, Country</p>
             </div>
 
             {/* WhatsApp opt-in */}

@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       phone,
       gender,
       wa_opt_in,
+      location,
     } = body;
 
     // Validate name
@@ -49,6 +50,14 @@ export async function POST(req: NextRequest) {
     if (!gender || !["male", "female"].includes(gender)) {
       return NextResponse.json(
         { error: "Please select your gender" },
+        { status: 400 }
+      );
+    }
+
+    // Validate location
+    if (!location || typeof location !== "string" || location.trim().length < 2) {
+      return NextResponse.json(
+        { error: "Please enter where you're from" },
         { status: 400 }
       );
     }
@@ -83,6 +92,7 @@ export async function POST(req: NextRequest) {
     const cleanName = full_name.trim();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhone = phone.trim().replace(/\s+/g, "");
+    const cleanLocation = location.trim();
     const waOptIn = Boolean(wa_opt_in);
     const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Tantra";
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
@@ -133,6 +143,7 @@ export async function POST(req: NextRequest) {
         phone: cleanPhone,
         gender,
         wa_opt_in: waOptIn,
+        location: cleanLocation,
         date_of_birth,
         ticket_code: ticketCode,
         event_datetime: eventDateISO,

@@ -24,6 +24,7 @@ type OpenBarSignup = {
   phone: string | null;
   gender: "male" | "female" | null;
   wa_opt_in: boolean;
+  location: string | null;
   date_of_birth: string;
   ticket_code: string;
   event_datetime: string | null;
@@ -97,6 +98,30 @@ export default function OpenBarAnalyticsPanel({
     else if (age > 40) ageBuckets["41+"] += 1;
   }
   const ageData = Object.entries(ageBuckets).map(([range, count]) => ({ range, count }));
+
+  // ===== Top Origins (city/country) =====
+  const locationCounts = new Map<string, number>();
+  for (const s of signups) {
+    if (!s.location) continue;
+    // Basic normalization: lowercase, trim, collapse spaces
+    const key = s.location.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!key) continue;
+    locationCounts.set(key, (locationCounts.get(key) || 0) + 1);
+  }
+  // Get original casing for display (use the first-seen version)
+  const locationDisplay = new Map<string, string>();
+  for (const s of signups) {
+    if (!s.location) continue;
+    const key = s.location.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!locationDisplay.has(key)) locationDisplay.set(key, s.location.trim());
+  }
+  const topLocations = Array.from(locationCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([key, count]) => ({
+      location: locationDisplay.get(key) || key,
+      count,
+    }));
 
   // ===== Signup velocity (by created_at day of week) =====
   const dowLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -197,6 +222,27 @@ export default function OpenBarAnalyticsPanel({
                 <YAxis stroke={GRAY} fontSize={11} allowDecimals={false} />
                 <Tooltip content={<DarkTooltip />} />
                 <Bar dataKey="count" fill={RED_LIGHT} name="Guests" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        {/* Top Origins */}
+        <ChartCard title="Top Guest Origins">
+          {topLocations.length === 0 ? (
+            <EmptyChart msg="No location data yet." />
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(220, topLocations.length * 28)}>
+              <BarChart
+                data={topLocations}
+                layout="vertical"
+                margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+                <XAxis type="number" stroke={GRAY} fontSize={11} allowDecimals={false} />
+                <YAxis type="category" dataKey="location" stroke={GRAY} fontSize={11} width={120} />
+                <Tooltip content={<DarkTooltip />} />
+                <Bar dataKey="count" fill={RED} name="Signups" />
               </BarChart>
             </ResponsiveContainer>
           )}

@@ -50,6 +50,7 @@ type OpenBarSignup = {
   phone: string | null;
   gender: "male" | "female" | null;
   wa_opt_in: boolean;
+  location: string | null;
   date_of_birth: string;
   ticket_code: string;
   event_datetime: string | null;
@@ -374,6 +375,7 @@ export default function AdminPage() {
       s.full_name.toLowerCase().includes(q) ||
       s.email.toLowerCase().includes(q) ||
       (s.phone || "").toLowerCase().includes(q) ||
+      (s.location || "").toLowerCase().includes(q) ||
       s.ticket_code.toLowerCase().includes(q)
     );
   });
@@ -528,7 +530,7 @@ export default function AdminPage() {
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <input type="text" value={openBarSearch} onChange={(e) => setOpenBarSearch(e.target.value)} placeholder="Search name, email, phone, pass number..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
+                <input type="text" value={openBarSearch} onChange={(e) => setOpenBarSearch(e.target.value)} placeholder="Search name, email, phone, location, pass number..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
                 <button onClick={() => loadOpenBar()} disabled={openBarLoading} className="btn-outline px-5 py-3 text-xs">
                   {openBarLoading ? "..." : "Refresh"}
                 </button>
@@ -808,6 +810,7 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
               <th className="px-4 py-4 label">Guest</th>
               <th className="px-3 py-4 label text-center">M/F</th>
               <th className="px-4 py-4 label">Contact</th>
+              <th className="px-4 py-4 label">From</th>
               <th className="px-3 py-4 label">Age</th>
               <th className="px-4 py-4 label">Event Night</th>
               <th className="px-4 py-4 label">Pass</th>
@@ -819,7 +822,7 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
           </thead>
           <tbody>
             {signups.length === 0 && (
-              <tr><td colSpan={10} className="px-4 py-12 text-center text-muted">
+              <tr><td colSpan={11} className="px-4 py-12 text-center text-muted">
                 {totalSignups === 0 ? "No Open Bar signups yet. Share /signup to start." : "No signups match these filters."}
               </td></tr>
             )}
@@ -837,6 +840,9 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
                   <td className="px-4 py-3.5">
                     <div className="text-xs text-muted">{s.email}</div>
                     {s.phone && <div className="text-xs text-default mt-0.5 font-mono">{s.phone}</div>}
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {s.location ? <div className="text-xs text-default">{s.location}</div> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-3 py-3.5"><div className="text-xs text-default font-bold">{age}</div></td>
                   <td className="px-4 py-3.5 text-xs whitespace-nowrap">
