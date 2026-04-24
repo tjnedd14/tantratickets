@@ -1210,8 +1210,9 @@ function IssueTab(props: any) {
   }
 
   return (
-    <div className="max-w-xl">
+    <div className="max-w-xl lg:max-w-6xl">
       {issueSuccess ? (
+        <div className="max-w-xl">
         <div className="bg-card tantra-border-strong p-7 sm:p-9">
           <div className="flex items-center justify-center w-16 h-16 rounded-full bg-tantra-red/20 mb-5 mx-auto border-2 border-tantra-red animate-pulse-red">
             <svg className="w-8 h-8 text-tantra-red" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -1268,6 +1269,7 @@ function IssueTab(props: any) {
 
           <button onClick={() => setIssueSuccess(null)} className="btn-red w-full py-4 text-sm">New Reservation</button>
         </div>
+        </div>
       ) : (
         <form onSubmit={onSubmit} className="bg-card tantra-border-strong p-7 sm:p-9 space-y-5">
           <div className="mb-1">
@@ -1275,45 +1277,58 @@ function IssueTab(props: any) {
             <h2 className="display-text text-3xl text-default mb-2">Add Guest</h2>
             <p className="text-sm text-muted">Enter client details — they receive one ticket by email.</p>
           </div>
-          <div><label className="label block mb-2">CLIENT NAME</label>
-            <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" /></div>
-          <div><label className="label block mb-2">EMAIL</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="client@example.com" /></div>
-          <div><label className="label block mb-2">PHONE</label>
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="+297 123 4567" /></div>
-          <div>
-            <label className="label block mb-3">PARTY SIZE</label>
-            <div className="flex items-center gap-4 bg-deep tantra-border p-4">
-              <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">−</button>
-              <div className="flex-1 text-center">
-                <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
-                <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
+
+          {/* Two-column layout on desktop: left = form fields, right = floor plan */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
+            {/* LEFT COLUMN — guest info + details */}
+            <div className="space-y-5">
+              <div><label className="label block mb-2">CLIENT NAME</label>
+                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" /></div>
+              <div><label className="label block mb-2">EMAIL</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="client@example.com" /></div>
+              <div><label className="label block mb-2">PHONE</label>
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="+297 123 4567" /></div>
+              <div>
+                <label className="label block mb-3">PARTY SIZE</label>
+                <div className="flex items-center gap-4 bg-deep tantra-border p-4">
+                  <button type="button" onClick={() => setGroupSize(Math.max(1, groupSize - 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">−</button>
+                  <div className="flex-1 text-center">
+                    <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
+                    <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
+                  </div>
+                  <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
+                </div>
               </div>
-              <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
+              <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
+                <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" /></div>
+              <div><label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+                <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Hostess name" /></div>
+            </div>
+
+            {/* RIGHT COLUMN — floor plan */}
+            <div className="space-y-5">
+              <div>
+                <label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional — tap to select)</span></label>
+                {selectedDateKey ? (
+                  <p className="text-xs text-muted mb-2">
+                    Availability for <span className="text-default font-semibold">{new Date(selectedDateKey + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-yellow-500 mb-2">
+                    ⚠ Select an event date below to see table availability
+                  </p>
+                )}
+                <FloorPlanPicker
+                  value={tableNumber}
+                  onChange={setTableNumber}
+                  bookedTables={bookedTables}
+                  onConflict={handleConflict}
+                />
+              </div>
             </div>
           </div>
-          <div>
-            <label className="label block mb-2">TABLE <span className="normal-case tracking-normal text-subtle">(optional — tap to select)</span></label>
-            {selectedDateKey ? (
-              <p className="text-xs text-muted mb-2">
-                Availability for <span className="text-default font-semibold">{new Date(selectedDateKey + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</span>
-              </p>
-            ) : (
-              <p className="text-xs text-yellow-500 mb-2">
-                ⚠ Select an event date below to see table availability
-              </p>
-            )}
-            <FloorPlanPicker
-              value={tableNumber}
-              onChange={setTableNumber}
-              bookedTables={bookedTables}
-              onConflict={handleConflict}
-            />
-          </div>
-          <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="e.g. Birthday celebration, bottle service" /></div>
-          <div><label className="label block mb-2">ISSUED BY <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
-            <input type="text" value={issuedBy} onChange={(e) => setIssuedBy(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Hostess name" /></div>
+
+          {/* Event date at bottom — full width always */}
           <div className="bg-tantra-red/10 border-2 border-tantra-red p-4">
             <label className="label block mb-2 text-tantra-red">⚠ EVENT DATE & TIME — CONFIRM BEFORE SENDING</label>
             <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} className="tantra-input w-full px-4 py-3.5 text-lg font-bold" />
