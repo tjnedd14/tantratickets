@@ -32,6 +32,7 @@ type Registration = {
   notes: string | null;
   table_number: string | null;
   issued_by: string | null;
+  is_vip: boolean;
   email_sent: boolean;
   email_sent_at: string | null;
   created_at: string;
@@ -52,6 +53,7 @@ type OpenBarSignup = {
   gender: "male" | "female" | null;
   wa_opt_in: boolean;
   location: string | null;
+  is_vip: boolean;
   date_of_birth: string;
   ticket_code: string;
   event_datetime: string | null;
@@ -98,6 +100,7 @@ export default function AdminPage() {
   const [listLoading, setListLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<CheckInFilter>("all");
+  const [vipOnly, setVipOnly] = useState(false);
   const [dateMode, setDateMode] = useState<DateFilterMode>("specific");
   const [selectedDate, setSelectedDate] = useState<string>(getTodayKey());
   const [checkingIn, setCheckingIn] = useState<Record<string, boolean>>({});
@@ -108,6 +111,7 @@ export default function AdminPage() {
   const [openBarSearch, setOpenBarSearch] = useState("");
   const [openBarFilter, setOpenBarFilter] = useState<CheckInFilter>("all");
   const [openBarGenderFilter, setOpenBarGenderFilter] = useState<GenderFilter>("all");
+  const [openBarVipOnly, setOpenBarVipOnly] = useState(false);
   const [openBarCheckingIn, setOpenBarCheckingIn] = useState<Record<string, boolean>>({});
 
   // Modals
@@ -282,6 +286,41 @@ export default function AdminPage() {
     }
   }
 
+  async function toggleVip(target: "registrations" | "open_bar_signups", id: string, currentVip: boolean) {
+    const next = !currentVip;
+    // Optimistic update
+    if (target === "registrations") {
+      setRegistrations((prev) => prev.map((r) => (r.id === id ? { ...r, is_vip: next } : r)));
+    } else {
+      setOpenBarSignups((prev) => prev.map((s) => (s.id === id ? { ...s, is_vip: next } : s)));
+    }
+
+    try {
+      const res = await fetch("/api/toggle-vip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ table: target, id, is_vip: next }),
+      });
+      if (!res.ok) {
+        // Rollback
+        if (target === "registrations") {
+          setRegistrations((prev) => prev.map((r) => (r.id === id ? { ...r, is_vip: currentVip } : r)));
+        } else {
+          setOpenBarSignups((prev) => prev.map((s) => (s.id === id ? { ...s, is_vip: currentVip } : s)));
+        }
+        alert("Failed to update VIP status");
+      }
+    } catch (err) {
+      // Rollback on network error
+      if (target === "registrations") {
+        setRegistrations((prev) => prev.map((r) => (r.id === id ? { ...r, is_vip: currentVip } : r)));
+      } else {
+        setOpenBarSignups((prev) => prev.map((s) => (s.id === id ? { ...s, is_vip: currentVip } : s)));
+      }
+      alert("Network error");
+    }
+  }
+
   async function handleIssueSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIssueError("");
@@ -353,6 +392,7 @@ export default function AdminPage() {
     const ticket = r.tickets[0];
     if (filter === "pending" && ticket?.checked_in) return false;
     if (filter === "checked_in" && !ticket?.checked_in) return false;
+    if (vipOnly && !r.is_vip) return false;
     if (!search.trim()) return true;
     const s = search.toLowerCase();
     return (
@@ -370,6 +410,7 @@ export default function AdminPage() {
     if (openBarFilter === "checked_in" && !s.checked_in) return false;
     if (openBarGenderFilter === "male" && s.gender !== "male") return false;
     if (openBarGenderFilter === "female" && s.gender !== "female") return false;
+    if (openBarVipOnly && !s.is_vip) return false;
     if (!openBarSearch.trim()) return true;
     const q = openBarSearch.toLowerCase();
     return (
@@ -501,6 +542,7 @@ export default function AdminPage() {
                 <FilterPill active={filter === "all"} onClick={() => setFilter("all")} label={`All (${dateFilteredRegs.length})`} />
                 <FilterPill active={filter === "pending"} onClick={() => setFilter("pending")} label={`Pending (${dateFilteredRegs.filter((r) => !r.tickets[0]?.checked_in).length})`} />
                 <FilterPill active={filter === "checked_in"} onClick={() => setFilter("checked_in")} label={`Checked In (${dateFilteredRegs.filter((r) => r.tickets[0]?.checked_in).length})`} />
+                <FilterPill active={vipOnly} onClick={() => setVipOnly(!vipOnly)} label={`⭐ VIP Only (${dateFilteredRegs.filter((r) => r.is_vip).length})`} />
               </div>
               <GuestTable
                 registrations={searchAndStatusFiltered}
@@ -509,6 +551,7 @@ export default function AdminPage() {
                 onToggleCheckIn={toggleCheckIn}
                 onEdit={(r) => setEditingReservation(r)}
                 onDelete={(r) => setDeletingReservation(r)}
+                onToggleVip={(id, currentVip) => toggleVip("registrations", id, currentVip)}
               />
               <div className="pt-6 border-t border-[var(--border)]">
                 <AnalyticsPanel registrations={registrations} />
@@ -588,6 +631,7 @@ export default function AdminPage() {
                 <FilterPill active={openBarFilter === "all"} onClick={() => setOpenBarFilter("all")} label={`All (${openBarSignups.length})`} />
                 <FilterPill active={openBarFilter === "pending"} onClick={() => setOpenBarFilter("pending")} label={`Pending (${openBarSignups.filter((s) => !s.checked_in).length})`} />
                 <FilterPill active={openBarFilter === "checked_in"} onClick={() => setOpenBarFilter("checked_in")} label={`Redeemed (${openBarSignups.filter((s) => s.checked_in).length})`} />
+                <FilterPill active={openBarVipOnly} onClick={() => setOpenBarVipOnly(!openBarVipOnly)} label={`⭐ VIP Only (${openBarSignups.filter((s) => s.is_vip).length})`} />
               </div>
 
               <div className="flex gap-2 flex-wrap">
@@ -602,6 +646,7 @@ export default function AdminPage() {
                 checkingIn={openBarCheckingIn}
                 onToggleCheckIn={toggleOpenBarCheckIn}
                 onDelete={(s) => setDeletingOpenBar(s)}
+                onToggleVip={(id, currentVip) => toggleVip("open_bar_signups", id, currentVip)}
               />
 
               <OpenBarAnalyticsPanel signups={openBarSignups} />
@@ -722,13 +767,39 @@ function FilterPill({ active, onClick, label }: { active: boolean; onClick: () =
   );
 }
 
-function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete }: {
+function VipStar({ isVip, onToggle }: { isVip: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      title={isVip ? "Remove VIP status" : "Mark as VIP"}
+      className="flex-shrink-0 transition-transform hover:scale-110 cursor-pointer"
+      aria-label={isVip ? "VIP guest, click to unmark" : "Click to mark as VIP"}
+    >
+      {isVip ? (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="#FFB800" stroke="#FFB800" strokeWidth="1">
+          <path d="M12 2l2.39 7.36h7.74l-6.26 4.55 2.39 7.36L12 16.71l-6.26 4.56 2.39-7.36L1.87 9.36h7.74L12 2z" />
+        </svg>
+      ) : (
+        <svg className="w-5 h-5 text-subtle hover:text-yellow-500 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleCheckIn, onEdit, onDelete, onToggleVip }: {
   registrations: Registration[];
   totalRegistrations: number;
   checkingIn: Record<string, boolean>;
   onToggleCheckIn: (code: string, current: boolean) => void;
   onEdit: (r: Registration) => void;
   onDelete: (r: Registration) => void;
+  onToggleVip: (id: string, currentVip: boolean) => void;
 }) {
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
@@ -759,7 +830,10 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
               return (
                 <tr key={r.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${isCheckedIn ? "opacity-70" : ""}`}>
                   <td className="px-4 py-3.5">
-                    <div className="font-semibold text-default">{r.full_name}</div>
+                    <div className="flex items-center gap-2">
+                      <VipStar isVip={r.is_vip} onToggle={() => onToggleVip(r.id, r.is_vip)} />
+                      <span className="font-semibold text-default">{r.full_name}</span>
+                    </div>
                     {r.notes && <div className="text-xs text-muted mt-1 italic">{r.notes}</div>}
                     {r.issued_by && <div className="text-[10px] text-subtle mt-0.5">by {r.issued_by}</div>}
                   </td>
@@ -804,11 +878,12 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
   );
 }
 
-function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDelete }: {
+function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDelete, onToggleVip }: {
   signups: OpenBarSignup[]; totalSignups: number;
   checkingIn: Record<string, boolean>;
   onToggleCheckIn: (code: string, current: boolean) => void;
   onDelete: (s: OpenBarSignup) => void;
+  onToggleVip: (id: string, currentVip: boolean) => void;
 }) {
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
@@ -840,7 +915,12 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
               const isLoading = checkingIn[s.ticket_code];
               return (
                 <tr key={s.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${s.checked_in ? "opacity-70" : ""}`}>
-                  <td className="px-4 py-3.5"><div className="font-semibold text-default">{s.full_name}</div></td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <VipStar isVip={s.is_vip} onToggle={() => onToggleVip(s.id, s.is_vip)} />
+                      <span className="font-semibold text-default">{s.full_name}</span>
+                    </div>
+                  </td>
                   <td className="px-3 py-3.5 text-center">
                     {s.gender === "male" && <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 font-bold text-sm" title="Male">♂</span>}
                     {s.gender === "female" && <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-pink-500/20 text-pink-400 font-bold text-sm" title="Female">♀</span>}
@@ -1349,6 +1429,8 @@ function RemindersTab({ password }: { password: string }) {
     ticket_code: string | null;
     group_size?: number;
     table_number?: string | null;
+    gender?: "male" | "female" | null;
+    is_vip?: boolean;
   };
 
   const [eventDate, setEventDate] = useState<string>(() => {
@@ -1361,6 +1443,8 @@ function RemindersTab({ password }: { password: string }) {
   const [selectedReservations, setSelectedReservations] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
   const [searchFilter, setSearchFilter] = useState("");
+  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [vipFilter, setVipFilter] = useState(false);
 
   const [imageUrls, setImageUrls] = useState<string[]>(["", "", ""]);
   const [customMessage, setCustomMessage] = useState("");
@@ -1431,14 +1515,35 @@ function RemindersTab({ password }: { password: string }) {
     setError("");
     setResult(null);
     setDuplicateWarning(null);
+
+    // Recompute visible IDs using current filters so we only send to selected + visible items
+    const sq = searchFilter.trim().toLowerCase();
+    const visibleOpenbar = openbarRecipients.filter((r) => {
+      const okSearch = !sq || r.full_name.toLowerCase().includes(sq) || r.email.toLowerCase().includes(sq) || (r.ticket_code || "").toLowerCase().includes(sq);
+      const okGender = genderFilter === "all" || r.gender === genderFilter;
+      const okVip = !vipFilter || Boolean(r.is_vip);
+      return okSearch && okGender && okVip;
+    });
+    const visibleReservations = genderFilter !== "all"
+      ? []
+      : reservationRecipients.filter((r) => {
+          const okSearch = !sq || r.full_name.toLowerCase().includes(sq) || r.email.toLowerCase().includes(sq) || (r.ticket_code || "").toLowerCase().includes(sq);
+          const okVip = !vipFilter || Boolean(r.is_vip);
+          return okSearch && okVip;
+        });
+    const visibleOpenbarSet = new Set(visibleOpenbar.map((r) => r.id));
+    const visibleReservationSet = new Set(visibleReservations.map((r) => r.id));
+    const effectiveOpenbarIds = Array.from(selectedOpenbar).filter((id) => visibleOpenbarSet.has(id));
+    const effectiveReservationIds = Array.from(selectedReservations).filter((id) => visibleReservationSet.has(id));
+
     try {
       const res = await fetch("/api/send-reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-password": password },
         body: JSON.stringify({
           event_date: eventDate,
-          openbar_ids: Array.from(selectedOpenbar),
-          reservation_ids: Array.from(selectedReservations),
+          openbar_ids: effectiveOpenbarIds,
+          reservation_ids: effectiveReservationIds,
           image_urls: imageUrls.filter((u) => u.trim().length > 0),
           custom_message: customMessage.trim() || undefined,
           confirm_double_send: confirmDoubleSend,
@@ -1458,20 +1563,35 @@ function RemindersTab({ password }: { password: string }) {
     }
   }
 
-  // Apply search filter to both lists
+  // Apply search + gender + VIP filters to both lists
   const q = searchFilter.trim().toLowerCase();
-  const filteredOpenbar = q
-    ? openbarRecipients.filter(
-        (r) => r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || (r.ticket_code || "").toLowerCase().includes(q)
-      )
-    : openbarRecipients;
-  const filteredReservations = q
-    ? reservationRecipients.filter(
-        (r) => r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || (r.ticket_code || "").toLowerCase().includes(q)
-      )
-    : reservationRecipients;
+  function matchesSearch(r: Recipient): boolean {
+    if (!q) return true;
+    return r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q) || (r.ticket_code || "").toLowerCase().includes(q);
+  }
+  function matchesGender(r: Recipient): boolean {
+    if (genderFilter === "all") return true;
+    return r.gender === genderFilter;
+  }
+  function matchesVip(r: Recipient): boolean {
+    if (!vipFilter) return true;
+    return Boolean(r.is_vip);
+  }
 
-  const totalSelected = selectedOpenbar.size + selectedReservations.size;
+  const filteredOpenbar = openbarRecipients.filter((r) => matchesSearch(r) && matchesGender(r) && matchesVip(r));
+  // Reservations have no gender data — when a gender filter is active, exclude them entirely.
+  const filteredReservations = genderFilter !== "all"
+    ? []
+    : reservationRecipients.filter((r) => matchesSearch(r) && matchesVip(r));
+
+  // Auto-deselect any items that are filtered out so they don't get sent
+  // (selected IDs that exist outside the filtered view will still be in the Set)
+  const visibleOpenbarIds = new Set(filteredOpenbar.map((r) => r.id));
+  const visibleReservationIds = new Set(filteredReservations.map((r) => r.id));
+  const effectiveSelectedOpenbar = new Set(Array.from(selectedOpenbar).filter((id) => visibleOpenbarIds.has(id)));
+  const effectiveSelectedReservations = new Set(Array.from(selectedReservations).filter((id) => visibleReservationIds.has(id)));
+
+  const totalSelected = effectiveSelectedOpenbar.size + effectiveSelectedReservations.size;
 
   return (
     <div className="space-y-5">
@@ -1514,6 +1634,21 @@ function RemindersTab({ password }: { password: string }) {
               </div>
             ) : (
               <>
+                {/* Filter pills: Gender + VIP */}
+                <div className="flex flex-wrap gap-2">
+                  <FilterPill active={genderFilter === "all"} onClick={() => setGenderFilter("all")} label="All" />
+                  <FilterPill active={genderFilter === "male"} onClick={() => setGenderFilter("male")} label={`♂ Male (${openbarRecipients.filter((r) => r.gender === "male").length})`} />
+                  <FilterPill active={genderFilter === "female"} onClick={() => setGenderFilter("female")} label={`♀ Female (${openbarRecipients.filter((r) => r.gender === "female").length})`} />
+                  <FilterPill active={vipFilter} onClick={() => setVipFilter(!vipFilter)} label={`⭐ VIP Only (${[...openbarRecipients, ...reservationRecipients].filter((r) => r.is_vip).length})`} />
+                </div>
+
+                {/* Filter active warning */}
+                {genderFilter !== "all" && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/40 text-yellow-500 text-xs px-4 py-2.5">
+                    ℹ Reservations are hidden — they don't have gender data. Only Open Bar guests will appear below.
+                  </div>
+                )}
+
                 {/* Search filter */}
                 <input
                   type="text"
@@ -1524,7 +1659,7 @@ function RemindersTab({ password }: { password: string }) {
                 />
 
                 {/* Open Bar list */}
-                {openbarRecipients.length > 0 && (
+                {openbarRecipients.length > 0 && filteredOpenbar.length > 0 && (
                   <div className="border border-[var(--border)] bg-deep">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-card">
                       <div className="flex items-center gap-3">
@@ -1536,7 +1671,10 @@ function RemindersTab({ password }: { password: string }) {
                         />
                         <span className="label">OPEN BAR</span>
                         <span className="text-xs text-muted">
-                          {selectedOpenbar.size} / {openbarRecipients.length} selected
+                          {effectiveSelectedOpenbar.size} / {filteredOpenbar.length} selected
+                          {filteredOpenbar.length !== openbarRecipients.length && (
+                            <span className="text-subtle"> (of {openbarRecipients.length})</span>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -1553,7 +1691,12 @@ function RemindersTab({ password }: { password: string }) {
                               className="w-4 h-4 accent-tantra-red cursor-pointer flex-shrink-0"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-default truncate">{r.full_name}</div>
+                              <div className="text-sm font-semibold text-default truncate flex items-center gap-1.5">
+                                {r.is_vip && <span className="text-yellow-500" title="VIP">⭐</span>}
+                                {r.gender === "male" && <span className="text-blue-400 text-xs" title="Male">♂</span>}
+                                {r.gender === "female" && <span className="text-pink-400 text-xs" title="Female">♀</span>}
+                                <span className="truncate">{r.full_name}</span>
+                              </div>
                               <div className="text-xs text-muted truncate">{r.email}</div>
                             </div>
                             <div className="font-mono text-xs text-subtle flex-shrink-0">{r.ticket_code}</div>
@@ -1565,7 +1708,7 @@ function RemindersTab({ password }: { password: string }) {
                 )}
 
                 {/* Reservations list */}
-                {reservationRecipients.length > 0 && (
+                {reservationRecipients.length > 0 && filteredReservations.length > 0 && (
                   <div className="border border-[var(--border)] bg-deep">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-card">
                       <div className="flex items-center gap-3">
@@ -1577,7 +1720,10 @@ function RemindersTab({ password }: { password: string }) {
                         />
                         <span className="label">RESERVATIONS</span>
                         <span className="text-xs text-muted">
-                          {selectedReservations.size} / {reservationRecipients.length} selected
+                          {effectiveSelectedReservations.size} / {filteredReservations.length} selected
+                          {filteredReservations.length !== reservationRecipients.length && (
+                            <span className="text-subtle"> (of {reservationRecipients.length})</span>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -1594,10 +1740,11 @@ function RemindersTab({ password }: { password: string }) {
                               className="w-4 h-4 accent-tantra-red cursor-pointer flex-shrink-0"
                             />
                             <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-default truncate">
-                                {r.full_name}
-                                {r.group_size && <span className="text-xs text-muted ml-2">· {r.group_size} guest{r.group_size === 1 ? "" : "s"}</span>}
-                                {r.table_number && <span className="text-xs text-muted ml-2">· Table {r.table_number}</span>}
+                              <div className="text-sm font-semibold text-default truncate flex items-center gap-1.5">
+                                {r.is_vip && <span className="text-yellow-500" title="VIP">⭐</span>}
+                                <span>{r.full_name}</span>
+                                {r.group_size && <span className="text-xs text-muted ml-1">· {r.group_size} guest{r.group_size === 1 ? "" : "s"}</span>}
+                                {r.table_number && <span className="text-xs text-muted ml-1">· Table {r.table_number}</span>}
                               </div>
                               <div className="text-xs text-muted truncate">{r.email}</div>
                             </div>

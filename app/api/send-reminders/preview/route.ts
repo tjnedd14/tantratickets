@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // Open Bar: those not yet checked in
     const { data: openBarData } = await supabase
       .from("open_bar_signups")
-      .select("id, full_name, email, ticket_code, checked_in")
+      .select("id, full_name, email, ticket_code, gender, is_vip, checked_in")
       .gte("event_datetime", dayStart.toISOString())
       .lte("event_datetime", dayEnd.toISOString())
       .eq("checked_in", false)
@@ -42,13 +42,15 @@ export async function POST(req: NextRequest) {
       email: r.email,
       full_name: r.full_name,
       ticket_code: r.ticket_code,
+      gender: r.gender,
+      is_vip: r.is_vip,
     }));
 
     // Reservations: with event on that date
     const { data: regs } = await supabase
       .from("registrations")
       .select(`
-        id, full_name, email, group_size, table_number,
+        id, full_name, email, group_size, table_number, is_vip,
         tickets ( ticket_code, checked_in )
       `)
       .gte("event_datetime", dayStart.toISOString())
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
         ticket_code: tickets[0]?.ticket_code || null,
         group_size: r.group_size,
         table_number: r.table_number,
+        is_vip: r.is_vip,
       });
     }
 
