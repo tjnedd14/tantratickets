@@ -504,7 +504,7 @@ export default function AdminPage() {
               Open Bar<span className="ml-2 text-tantra-red">({openBarSignups.length})</span>
             </TabButton>
             <TabButton active={tab === "reminders"} onClick={() => setTab("reminders")}>
-              Reminders
+              Email Blast
             </TabButton>
           </div>
 
@@ -776,15 +776,15 @@ function VipStar({ isVip, onToggle }: { isVip: boolean; onToggle: () => void }) 
         onToggle();
       }}
       title={isVip ? "Remove VIP status" : "Mark as VIP"}
-      className="flex-shrink-0 transition-transform hover:scale-110 cursor-pointer"
+      className={`flex-shrink-0 transition-all hover:scale-125 cursor-pointer p-1 -ml-1 rounded ${isVip ? "drop-shadow-[0_0_4px_rgba(255,184,0,0.6)]" : ""}`}
       aria-label={isVip ? "VIP guest, click to unmark" : "Click to mark as VIP"}
     >
       {isVip ? (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="#FFB800" stroke="#FFB800" strokeWidth="1">
-          <path d="M12 2l2.39 7.36h7.74l-6.26 4.55 2.39 7.36L12 16.71l-6.26 4.56 2.39-7.36L1.87 9.36h7.74L12 2z" />
+        <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#FFB800" stroke="#FFB800" strokeWidth="1.5">
+          <path strokeLinejoin="round" d="M12 2l2.39 7.36h7.74l-6.26 4.55 2.39 7.36L12 16.71l-6.26 4.56 2.39-7.36L1.87 9.36h7.74L12 2z" />
         </svg>
       ) : (
-        <svg className="w-5 h-5 text-subtle hover:text-yellow-500 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg className="w-6 h-6 text-yellow-600/40 hover:text-yellow-500 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
         </svg>
       )}
@@ -801,35 +801,38 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
   onDelete: (r: Registration) => void;
   onToggleVip: (id: string, currentVip: boolean) => void;
 }) {
+  if (registrations.length === 0) {
+    return (
+      <div className="bg-card tantra-border-strong p-8 text-center text-muted">
+        {totalRegistrations === 0 ? "No reservations yet." : "No reservations match these filters."}
+      </div>
+    );
+  }
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* DESKTOP TABLE — visible at lg+ (≥1024px) */}
+      <div className="hidden lg:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-deep border-b border-tantra-red">
             <tr className="text-left">
-              <th className="px-4 py-4 label">Client</th>
-              <th className="px-4 py-4 label">Contact</th>
-              <th className="px-4 py-4 label">Event</th>
-              <th className="px-4 py-4 label">Party</th>
-              <th className="px-4 py-4 label">Table</th>
-              <th className="px-4 py-4 label">Ticket</th>
-              <th className="px-4 py-4 label text-center">Check-in</th>
-              <th className="px-4 py-4 label text-center">Actions</th>
+              <th className="px-3 py-4 label">Client</th>
+              <th className="px-3 py-4 label">Contact</th>
+              <th className="px-3 py-4 label">Event</th>
+              <th className="px-3 py-4 label">Party</th>
+              <th className="px-3 py-4 label">Table</th>
+              <th className="px-3 py-4 label">Ticket</th>
+              <th className="px-3 py-4 label text-center">Check-in</th>
+              <th className="px-3 py-4 label text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {registrations.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-muted">
-                {totalRegistrations === 0 ? "No reservations yet." : "No reservations match these filters."}
-              </td></tr>
-            )}
             {registrations.map((r: Registration) => {
               const ticket = r.tickets[0];
               const isCheckedIn = ticket?.checked_in ?? false;
               const isLoading = ticket ? checkingIn[ticket.ticket_code] : false;
               return (
                 <tr key={r.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${isCheckedIn ? "opacity-70" : ""}`}>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5">
                     <div className="flex items-center gap-2">
                       <VipStar isVip={r.is_vip} onToggle={() => onToggleVip(r.id, r.is_vip)} />
                       <span className="font-semibold text-default">{r.full_name}</span>
@@ -837,24 +840,24 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                     {r.notes && <div className="text-xs text-muted mt-1 italic">{r.notes}</div>}
                     {r.issued_by && <div className="text-[10px] text-subtle mt-0.5">by {r.issued_by}</div>}
                   </td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5">
                     <div className="text-xs text-muted">{r.email}</div>
                     <div className="text-xs text-subtle font-mono">{r.phone}</div>
                   </td>
-                  <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                  <td className="px-3 py-3.5 text-xs whitespace-nowrap">
                     {r.event_datetime ? <span className="text-default font-semibold">{formatEventDate(r.event_datetime)}</span> : <span className="text-subtle">—</span>}
                   </td>
-                  <td className="px-4 py-3.5"><span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span></td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5"><span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span></td>
+                  <td className="px-3 py-3.5">
                     {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5">
                     {ticket ? <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5 text-center">
+                  <td className="px-3 py-3.5 text-center">
                     {ticket ? <CheckInButton checkedIn={isCheckedIn} loading={isLoading} checkedInAt={ticket.checked_in_at} onClick={() => onToggleCheckIn(ticket.ticket_code, isCheckedIn)} /> : <span className="text-subtle text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5 text-center">
+                  <td className="px-3 py-3.5 text-center">
                     <div className="flex items-center justify-center gap-2">
                       <button onClick={() => onEdit(r)} className="btn-icon w-8 h-8 flex items-center justify-center" title="Edit">
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -874,6 +877,66 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
           </tbody>
         </table>
       </div>
+
+      {/* MOBILE / TABLET CARDS — visible below lg (<1024px) */}
+      <div className="lg:hidden divide-y divide-[var(--border)]">
+        {registrations.map((r: Registration) => {
+          const ticket = r.tickets[0];
+          const isCheckedIn = ticket?.checked_in ?? false;
+          const isLoading = ticket ? checkingIn[ticket.ticket_code] : false;
+          return (
+            <div key={r.id} className={`p-4 ${isCheckedIn ? "opacity-70" : ""}`}>
+              <div className="flex items-start gap-3 mb-3">
+                <VipStar isVip={r.is_vip} onToggle={() => onToggleVip(r.id, r.is_vip)} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-default text-base">{r.full_name}</span>
+                    <span className="inline-block bg-tantra-red text-white px-2 py-0.5 font-bold text-xs">{r.group_size} {r.group_size === 1 ? "guest" : "guests"}</span>
+                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number}</span>}
+                  </div>
+                  <div className="text-xs text-muted mt-1 truncate">{r.email}</div>
+                  <div className="text-xs text-default font-mono mt-0.5">{r.phone}</div>
+                  {r.notes && <div className="text-xs text-muted mt-1 italic">{r.notes}</div>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs mb-3 pl-9">
+                <div>
+                  <div className="text-subtle uppercase tracking-wide text-[10px] mb-0.5">Ticket</div>
+                  <div className="font-mono text-default font-bold">{ticket?.ticket_code || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-subtle uppercase tracking-wide text-[10px] mb-0.5">Event</div>
+                  <div className="text-default font-semibold">{r.event_datetime ? formatEventDate(r.event_datetime) : "—"}</div>
+                </div>
+                {r.issued_by && (
+                  <div className="col-span-2 text-[10px] text-subtle">by {r.issued_by}</div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pl-9">
+                <div className="flex-1">
+                  {ticket ? (
+                    <CheckInButton checkedIn={isCheckedIn} loading={isLoading} checkedInAt={ticket.checked_in_at} onClick={() => onToggleCheckIn(ticket.ticket_code, isCheckedIn)} />
+                  ) : (
+                    <span className="text-subtle text-xs">No ticket</span>
+                  )}
+                </div>
+                <button onClick={() => onEdit(r)} className="btn-icon w-10 h-10 flex items-center justify-center flex-shrink-0" title="Edit" aria-label="Edit reservation">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button onClick={() => onDelete(r)} className="w-10 h-10 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition flex-shrink-0" title="Delete" aria-label="Delete reservation">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -885,68 +948,71 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
   onDelete: (s: OpenBarSignup) => void;
   onToggleVip: (id: string, currentVip: boolean) => void;
 }) {
+  if (signups.length === 0) {
+    return (
+      <div className="bg-card tantra-border-strong p-8 text-center text-muted">
+        {totalSignups === 0 ? "No Open Bar signups yet. Share /signup to start." : "No signups match these filters."}
+      </div>
+    );
+  }
   return (
     <div className="bg-card tantra-border-strong overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* DESKTOP TABLE — visible at lg+ (≥1024px) */}
+      <div className="hidden lg:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-deep border-b border-tantra-red">
             <tr className="text-left">
-              <th className="px-4 py-4 label">Guest</th>
-              <th className="px-3 py-4 label text-center">M/F</th>
-              <th className="px-4 py-4 label">Contact</th>
-              <th className="px-4 py-4 label">From</th>
-              <th className="px-3 py-4 label">Age</th>
-              <th className="px-4 py-4 label">Event Night</th>
-              <th className="px-4 py-4 label">Pass</th>
-              <th className="px-3 py-4 label text-center">WA</th>
-              <th className="px-4 py-4 label">Signed Up</th>
-              <th className="px-4 py-4 label text-center">Status</th>
-              <th className="px-4 py-4 label text-center">Actions</th>
+              <th className="px-3 py-4 label">Guest</th>
+              <th className="px-2 py-4 label text-center">M/F</th>
+              <th className="px-3 py-4 label">Contact</th>
+              <th className="px-3 py-4 label hidden xl:table-cell">From</th>
+              <th className="px-2 py-4 label">Age</th>
+              <th className="px-3 py-4 label">Event</th>
+              <th className="px-3 py-4 label">Pass</th>
+              <th className="px-2 py-4 label text-center">WA</th>
+              <th className="px-3 py-4 label hidden xl:table-cell">Signed Up</th>
+              <th className="px-3 py-4 label text-center">Status</th>
+              <th className="px-3 py-4 label text-center">Del</th>
             </tr>
           </thead>
           <tbody>
-            {signups.length === 0 && (
-              <tr><td colSpan={11} className="px-4 py-12 text-center text-muted">
-                {totalSignups === 0 ? "No Open Bar signups yet. Share /signup to start." : "No signups match these filters."}
-              </td></tr>
-            )}
             {signups.map((s) => {
               const age = calculateAgeYears(s.date_of_birth);
               const isLoading = checkingIn[s.ticket_code];
               return (
                 <tr key={s.id} className={`border-t border-[var(--border)] hover:bg-surface transition ${s.checked_in ? "opacity-70" : ""}`}>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5">
                     <div className="flex items-center gap-2">
                       <VipStar isVip={s.is_vip} onToggle={() => onToggleVip(s.id, s.is_vip)} />
                       <span className="font-semibold text-default">{s.full_name}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-3.5 text-center">
+                  <td className="px-2 py-3.5 text-center">
                     {s.gender === "male" && <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-500/20 text-blue-400 font-bold text-sm" title="Male">♂</span>}
                     {s.gender === "female" && <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-pink-500/20 text-pink-400 font-bold text-sm" title="Female">♀</span>}
                     {!s.gender && <span className="text-subtle text-xs">—</span>}
                   </td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5">
                     <div className="text-xs text-muted">{s.email}</div>
                     {s.phone && <div className="text-xs text-default mt-0.5 font-mono">{s.phone}</div>}
                   </td>
-                  <td className="px-4 py-3.5">
+                  <td className="px-3 py-3.5 hidden xl:table-cell">
                     {s.location ? <div className="text-xs text-default">{s.location}</div> : <span className="text-subtle text-xs">—</span>}
                   </td>
-                  <td className="px-3 py-3.5"><div className="text-xs text-default font-bold">{age}</div></td>
-                  <td className="px-4 py-3.5 text-xs whitespace-nowrap">
+                  <td className="px-2 py-3.5"><div className="text-xs text-default font-bold">{age}</div></td>
+                  <td className="px-3 py-3.5 text-xs whitespace-nowrap">
                     {s.event_datetime ? <span className="text-default font-semibold">{formatEventDate(s.event_datetime)}</span> : <span className="text-subtle">—</span>}
                   </td>
-                  <td className="px-4 py-3.5"><span className="font-mono text-default text-xs font-bold">{s.ticket_code}</span></td>
-                  <td className="px-3 py-3.5 text-center">
+                  <td className="px-3 py-3.5"><span className="font-mono text-default text-xs font-bold">{s.ticket_code}</span></td>
+                  <td className="px-2 py-3.5 text-center">
                     {s.wa_opt_in ? (
                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-500/20 text-green-400 text-sm" title="Opted in to WhatsApp">✓</span>
                     ) : (
                       <span className="text-subtle text-xs">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3.5 text-xs text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-3.5 text-center">
+                  <td className="px-3 py-3.5 text-xs text-muted hidden xl:table-cell">{new Date(s.created_at).toLocaleDateString()}</td>
+                  <td className="px-3 py-3.5 text-center">
                     <CheckInButton
                       checkedIn={s.checked_in}
                       loading={isLoading}
@@ -954,7 +1020,7 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
                       onClick={() => onToggleCheckIn(s.ticket_code, s.checked_in)}
                     />
                   </td>
-                  <td className="px-4 py-3.5 text-center">
+                  <td className="px-3 py-3.5 text-center">
                     <button onClick={() => onDelete(s)} className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition" title="Delete">
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -966,6 +1032,76 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* MOBILE / TABLET CARDS — visible below lg (<1024px) */}
+      <div className="lg:hidden divide-y divide-[var(--border)]">
+        {signups.map((s) => {
+          const age = calculateAgeYears(s.date_of_birth);
+          const isLoading = checkingIn[s.ticket_code];
+          return (
+            <div key={s.id} className={`p-4 ${s.checked_in ? "opacity-70" : ""}`}>
+              {/* Header: star + name + gender */}
+              <div className="flex items-start gap-3 mb-3">
+                <VipStar isVip={s.is_vip} onToggle={() => onToggleVip(s.id, s.is_vip)} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-default text-base">{s.full_name}</span>
+                    {s.gender === "male" && <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 font-bold text-xs" title="Male">♂</span>}
+                    {s.gender === "female" && <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-pink-500/20 text-pink-400 font-bold text-xs" title="Female">♀</span>}
+                    <span className="text-xs text-muted">· {age}</span>
+                  </div>
+                  <div className="text-xs text-muted mt-1 truncate">{s.email}</div>
+                  {s.phone && <div className="text-xs text-default font-mono mt-0.5">{s.phone}</div>}
+                </div>
+              </div>
+
+              {/* Details grid */}
+              <div className="grid grid-cols-2 gap-2 text-xs mb-3 pl-9">
+                <div>
+                  <div className="text-subtle uppercase tracking-wide text-[10px] mb-0.5">Pass</div>
+                  <div className="font-mono text-default font-bold">{s.ticket_code}</div>
+                </div>
+                <div>
+                  <div className="text-subtle uppercase tracking-wide text-[10px] mb-0.5">Event</div>
+                  <div className="text-default font-semibold">{s.event_datetime ? formatEventDate(s.event_datetime) : "—"}</div>
+                </div>
+                {s.location && (
+                  <div className="col-span-2">
+                    <div className="text-subtle uppercase tracking-wide text-[10px] mb-0.5">From</div>
+                    <div className="text-default">{s.location}</div>
+                  </div>
+                )}
+                <div className="col-span-2 flex gap-3 pt-1">
+                  {s.wa_opt_in && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-green-500">
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20">✓</span>
+                      WhatsApp
+                    </span>
+                  )}
+                  <span className="text-[10px] text-subtle">Signed up {new Date(s.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex gap-2 pl-9">
+                <div className="flex-1">
+                  <CheckInButton
+                    checkedIn={s.checked_in}
+                    loading={isLoading}
+                    checkedInAt={s.checked_in_at}
+                    onClick={() => onToggleCheckIn(s.ticket_code, s.checked_in)}
+                  />
+                </div>
+                <button onClick={() => onDelete(s)} className="w-10 h-10 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition flex-shrink-0" title="Delete" aria-label="Delete signup">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1433,6 +1569,8 @@ function RemindersTab({ password }: { password: string }) {
     is_vip?: boolean;
   };
 
+  // Mode toggle: "all" loads everyone, "date" loads only guests for a specific date
+  const [audienceMode, setAudienceMode] = useState<"all" | "date">("all");
   const [eventDate, setEventDate] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1446,6 +1584,7 @@ function RemindersTab({ password }: { password: string }) {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [vipFilter, setVipFilter] = useState(false);
 
+  const [customSubject, setCustomSubject] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>(["", "", ""]);
   const [customMessage, setCustomMessage] = useState("");
   const [loadingList, setLoadingList] = useState(false);
@@ -1459,10 +1598,14 @@ function RemindersTab({ password }: { password: string }) {
     setError("");
     setResult(null);
     try {
+      const body: any = {};
+      if (audienceMode === "date") {
+        body.event_date = eventDate;
+      }
       const res = await fetch("/api/send-reminders/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-password": password },
-        body: JSON.stringify({ event_date: eventDate }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
@@ -1541,11 +1684,12 @@ function RemindersTab({ password }: { password: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-password": password },
         body: JSON.stringify({
-          event_date: eventDate,
+          event_date: audienceMode === "date" ? eventDate : undefined,
           openbar_ids: effectiveOpenbarIds,
           reservation_ids: effectiveReservationIds,
           image_urls: imageUrls.filter((u) => u.trim().length > 0),
           custom_message: customMessage.trim() || undefined,
+          custom_subject: customSubject.trim() || undefined,
           confirm_double_send: confirmDoubleSend,
         }),
       });
@@ -1597,32 +1741,60 @@ function RemindersTab({ password }: { password: string }) {
     <div className="space-y-5">
       <div className="flex items-center gap-3 mb-3">
         <span className="accent-line"></span>
-        <span className="label">SEND REMINDERS</span>
+        <span className="label">EMAIL BLAST</span>
       </div>
-      <h2 className="display-text text-3xl text-default">Event Reminder Email</h2>
+      <h2 className="display-text text-3xl text-default">Send Email to Guests</h2>
       <p className="text-muted text-sm">
-        Send a branded reminder to selected guests. You can cherry-pick specific people after loading the list.
+        Send a branded email to selected guests. Use the audience filters to narrow down (gender, VIP), then customize the email below.
       </p>
 
       <div className="bg-card tantra-border-strong p-6 md:p-8 space-y-5">
-        {/* Event date + load */}
+        {/* Audience mode toggle */}
         <div>
-          <label className="label block mb-2">EVENT DATE</label>
-          <div className="flex gap-2">
-            <input
-              type="date"
-              value={eventDate}
-              onChange={(e) => {
-                setEventDate(e.target.value);
-                setLoaded(false);
-                setResult(null);
-              }}
-              className="tantra-input flex-1 px-4 py-3"
-            />
-            <button type="button" onClick={loadRecipients} disabled={loadingList} className="btn-outline px-4 py-3 text-xs whitespace-nowrap">
-              {loadingList ? "Loading..." : "Load Recipients"}
+          <label className="label block mb-3">AUDIENCE</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setAudienceMode("all"); setLoaded(false); setResult(null); }}
+              className={`py-3 text-xs font-bold tracking-widest border transition-all ${audienceMode === "all" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}
+            >
+              ALL GUESTS
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAudienceMode("date"); setLoaded(false); setResult(null); }}
+              className={`py-3 text-xs font-bold tracking-widest border transition-all ${audienceMode === "date" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}
+            >
+              SPECIFIC EVENT DATE
             </button>
           </div>
+          <p className="text-xs text-subtle mt-2">
+            {audienceMode === "all"
+              ? "Loads everyone (Open Bar signups + reservations)."
+              : "Loads only pending guests for one specific event night (good for tonight's reminder)."}
+          </p>
+        </div>
+
+        {/* Date picker (only when audience = date) + Load button */}
+        <div>
+          {audienceMode === "date" && (
+            <>
+              <label className="label block mb-2">EVENT DATE</label>
+              <input
+                type="date"
+                value={eventDate}
+                onChange={(e) => {
+                  setEventDate(e.target.value);
+                  setLoaded(false);
+                  setResult(null);
+                }}
+                className="tantra-input w-full px-4 py-3 mb-2"
+              />
+            </>
+          )}
+          <button type="button" onClick={loadRecipients} disabled={loadingList} className="btn-outline w-full px-4 py-3 text-xs whitespace-nowrap">
+            {loadingList ? "Loading..." : "Load Recipients"}
+          </button>
         </div>
 
         {/* Recipient lists */}
@@ -1630,7 +1802,7 @@ function RemindersTab({ password }: { password: string }) {
           <>
             {openbarRecipients.length === 0 && reservationRecipients.length === 0 ? (
               <div className="bg-deep tantra-border p-6 text-center text-muted text-sm">
-                No pending guests for this date.
+                {audienceMode === "date" ? "No pending guests for this date." : "No guests in the database yet."}
               </div>
             ) : (
               <>
@@ -1760,6 +1932,24 @@ function RemindersTab({ password }: { password: string }) {
           </>
         )}
 
+        {/* Subject line — optional. When provided, switches email to "promo" mode (no TONIGHT banner). */}
+        <div>
+          <label className="label block mb-2">SUBJECT LINE <span className="normal-case tracking-normal text-subtle">(optional · for promos / non-reminder emails)</span></label>
+          <input
+            type="text"
+            value={customSubject}
+            onChange={(e) => setCustomSubject(e.target.value)}
+            placeholder="e.g. 🍸 Ladies drink free this Saturday at Tantra"
+            className="tantra-input w-full px-4 py-3 text-sm"
+            maxLength={120}
+          />
+          <p className="text-xs text-subtle mt-2">
+            {customSubject.trim()
+              ? "📣 Promo mode — email won't include 'TONIGHT' banner or pass codes. Your subject becomes the headline."
+              : "Leave blank to send a tonight-style reminder (uses default subject + pass code card)."}
+          </p>
+        </div>
+
         {/* Image URLs */}
         <div>
           <label className="label block mb-2">IMAGE URLS <span className="normal-case tracking-normal text-subtle">(optional · up to 3)</span></label>
@@ -1794,8 +1984,8 @@ function RemindersTab({ password }: { password: string }) {
           <textarea
             value={customMessage}
             onChange={(e) => setCustomMessage(e.target.value)}
-            placeholder="e.g. Tonight Musio Monks is guest DJ — don't miss it"
-            rows={3}
+            placeholder={customSubject.trim() ? "e.g. Ladies, drinks on the house this Saturday from 9-11PM. No cover, just show up." : "e.g. Tonight Musio Monks is guest DJ — don't miss it"}
+            rows={4}
             className="tantra-input w-full px-4 py-3 text-sm"
           />
         </div>
@@ -1839,6 +2029,8 @@ function RemindersTab({ password }: { password: string }) {
               ? "LOAD RECIPIENTS FIRST"
               : totalSelected === 0
               ? "SELECT AT LEAST ONE RECIPIENT"
+              : customSubject.trim()
+              ? `📣 SEND PROMO TO ${totalSelected} GUEST${totalSelected === 1 ? "" : "S"}`
               : `SEND REMINDER TO ${totalSelected} GUEST${totalSelected === 1 ? "" : "S"}`}
           </button>
         )}

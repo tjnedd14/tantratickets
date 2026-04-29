@@ -10,11 +10,12 @@ function checkAuth(req: NextRequest): boolean {
 /**
  * POST /api/send-reminders
  * Body: {
- *   event_date: "YYYY-MM-DD",
- *   openbar_ids: string[],        // signup IDs from preview
- *   reservation_ids: string[],    // registration IDs from preview
+ *   event_date?: "YYYY-MM-DD",     // optional — only used for reminder mode logging
+ *   openbar_ids: string[],
+ *   reservation_ids: string[],
  *   image_urls: string[],
  *   custom_message?: string,
+ *   custom_subject?: string,        // when provided, switches to "promo" email mode
  *   confirm_double_send?: boolean
  * }
  */
@@ -31,12 +32,14 @@ export async function POST(req: NextRequest) {
       reservation_ids,
       image_urls,
       custom_message,
+      custom_subject,
       confirm_double_send,
     } = body;
 
-    if (!event_date || !/^\d{4}-\d{2}-\d{2}$/.test(event_date)) {
-      return NextResponse.json({ error: "Invalid event_date (YYYY-MM-DD)" }, { status: 400 });
-    }
+    // event_date is optional now
+    const useDateForLog = event_date && /^\d{4}-\d{2}-\d{2}$/.test(event_date);
+    const customSubjectClean = typeof custom_subject === "string" ? custom_subject.trim() : "";
+    const isPromoMode = customSubjectClean.length > 0;
 
     const openBarIds: string[] = Array.isArray(openbar_ids) ? openbar_ids.filter((x) => typeof x === "string") : [];
     const reservationIds: string[] = Array.isArray(reservation_ids) ? reservation_ids.filter((x) => typeof x === "string") : [];
@@ -53,7 +56,6 @@ export async function POST(req: NextRequest) {
     const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Tantra Night Club";
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
 
-    // Derive audience for logging
     const audience =
       openBarIds.length > 0 && reservationIds.length > 0
         ? "both"
@@ -61,24 +63,26 @@ export async function POST(req: NextRequest) {
         ? "openbar"
         : "reservations";
 
-    // Check for duplicate sends
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const { data: recentLogs } = await supabase
-      .from("reminder_logs")
-      .select("id, audience, total_sent, created_at")
-      .eq("event_date", event_date)
-      .gte("created_at", todayStart.toISOString());
+    // Duplicate-send check only applies for reminder mode (when an event_date is set)
+    if (useDateForLog && !isPromoMode) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const { data: recentLogs } = await supabase
+        .from("reminder_logs")
+        .select("id, audience, total_sent, created_at")
+        .eq("event_date", event_date)
+        .gte("created_at", todayStart.toISOString());
 
-    if (recentLogs && recentLogs.length > 0 && !confirm_double_send) {
-      return NextResponse.json(
-        {
-          error: "duplicate",
-          message: `Reminders for ${event_date} were already sent today.`,
-          previous: recentLogs,
-        },
-        { status: 409 }
-      );
+      if (recentLogs && recentLogs.length > 0 && !confirm_double_send) {
+        return NextResponse.json(
+          {
+            error: "duplicate",
+            message: `Reminders for ${event_date} were already sent today.`,
+            previous: recentLogs,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     type Recipient = {
@@ -92,7 +96,6 @@ export async function POST(req: NextRequest) {
     };
     const recipients: Recipient[] = [];
 
-    // Fetch selected Open Bar signups
     if (openBarIds.length > 0) {
       const { data: openBar } = await supabase
         .from("open_bar_signups")
@@ -110,7 +113,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fetch selected reservations
     if (reservationIds.length > 0) {
       const { data: regs } = await supabase
         .from("registrations")
@@ -163,6 +165,7 @@ export async function POST(req: NextRequest) {
           isOpenBar: r.isOpenBar,
           imageUrls: cleanImages,
           customMessage: custom_message?.trim(),
+          customSubject: customSubjectClean || undefined,
         });
         sent++;
       } catch (err: any) {
@@ -172,15 +175,18 @@ export async function POST(req: NextRequest) {
       await new Promise((res) => setTimeout(res, 600));
     }
 
-    // Log
+    // Log — use event_date if available, otherwise today's date for record keeping
+    const logDate = useDateForLog ? event_date : new Date().toISOString().slice(0, 10);
     await supabase.from("reminder_logs").insert({
       audience,
-      event_date,
+      event_date: logDate,
       total_recipients: recipients.length,
       total_sent: sent,
       total_failed: failed,
       image_urls: cleanImages,
-      custom_message: custom_message?.trim() || null,
+      custom_message: customSubjectClean
+        ? `[PROMO: ${customSubjectClean}] ${custom_message?.trim() || ""}`.trim()
+        : custom_message?.trim() || null,
     });
 
     return NextResponse.json({
@@ -189,6 +195,7 @@ export async function POST(req: NextRequest) {
       sent,
       failed,
       failures: failures.slice(0, 10),
+      mode: isPromoMode ? "promo" : "reminder",
     });
   } catch (err: any) {
     console.error("Send reminders error:", err);
