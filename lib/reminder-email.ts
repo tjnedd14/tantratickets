@@ -15,9 +15,10 @@ type SendBlastParams = {
   isOpenBar: boolean;
   imageUrls: string[];
   customMessage?: string;
+  /** Custom subject + headline. If provided, switches to "promo" mode (no TONIGHT banner). */
   customSubject?: string;
+  /** Optional headline override for the email body (defaults to customSubject). */
   customHeadline?: string;
-  showPassInPromo?: boolean;
 };
 
 export async function sendReminderEmail(params: SendBlastParams) {
@@ -27,6 +28,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
   const dateStr = params.eventDatetime ? formatEventDateCompact(params.eventDatetime) : "";
   const firstName = params.fullName.split(" ")[0];
 
+  // PROMO MODE: custom subject was provided → general blast, not reminder
   const isPromoMode = Boolean(params.customSubject && params.customSubject.trim());
 
   const subject = isPromoMode
@@ -58,6 +60,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
     )
     .join("");
 
+  // Build the body greeting + message section based on mode
   const bodyContent = isPromoMode
     ? `
       <tr>
@@ -87,7 +90,8 @@ export async function sendReminderEmail(params: SendBlastParams) {
       </tr>
     `;
 
-  const ticketCardHtml = (params.ticketCode && (!isPromoMode || params.showPassInPromo))
+  // Pass/ticket card — only in reminder mode (promo emails don't reference tonight's ticket)
+  const ticketCardHtml = !isPromoMode && params.ticketCode
     ? `
       <tr>
         <td style="padding: 20px 30px 10px;">
@@ -109,7 +113,8 @@ export async function sendReminderEmail(params: SendBlastParams) {
     `
     : "";
 
-  const detailsHtml = (!isPromoMode || params.showPassInPromo) ? `
+  // Event details — only in reminder mode
+  const detailsHtml = isPromoMode ? "" : `
     <tr>
       <td style="padding: 20px 30px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #2a2a2a; padding-top:20px;">
@@ -135,7 +140,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
         </table>
       </td>
     </tr>
-  ` : "";
+  `;
 
   const html = `
 <!DOCTYPE html>
@@ -152,14 +157,17 @@ export async function sendReminderEmail(params: SendBlastParams) {
 
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="560" style="max-width:560px; background:#0E0E0E; border: 1px solid #1a1a1a;">
 
+          <!-- Red top bar -->
           <tr><td style="background:#DB130D; height:6px; font-size:0; line-height:0;">&nbsp;</td></tr>
 
+          <!-- Logo header -->
           <tr>
             <td align="center" style="padding: 40px 30px 20px;">
               <img src="${LOGO_URL}" alt="Tantra" style="height:60px; width:auto; display:inline-block;" />
             </td>
           </tr>
 
+          <!-- Headline -->
           <tr>
             <td align="center" style="padding: 0 30px 30px;">
               <div style="font-size:11px; letter-spacing:4px; color:#DB130D; font-weight:bold; margin-bottom:8px;">${eyebrow}</div>
@@ -171,6 +179,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
           </tr>
 
           ${imagesHtml ? `
+          <!-- Event images -->
           <tr>
             <td style="padding: 0 30px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -180,12 +189,16 @@ export async function sendReminderEmail(params: SendBlastParams) {
           </tr>
           ` : ""}
 
+          <!-- Body content (greeting + message) -->
           ${bodyContent}
 
+          <!-- Pass/ticket card (reminder mode only) -->
           ${ticketCardHtml}
 
+          <!-- Event details (reminder mode only) -->
           ${detailsHtml}
 
+          <!-- Address + map link -->
           <tr>
             <td align="center" style="padding: 30px 30px;">
               <a href="https://maps.google.com/?q=Tantra+Aruba+Palm+Beach" style="color:#DB130D; text-decoration:none; font-size:12px; letter-spacing:1px;">
@@ -194,8 +207,10 @@ export async function sendReminderEmail(params: SendBlastParams) {
             </td>
           </tr>
 
+          <!-- Red bottom bar -->
           <tr><td style="background:#DB130D; height:6px; font-size:0; line-height:0;">&nbsp;</td></tr>
 
+          <!-- Footer -->
           <tr>
             <td align="center" style="padding: 20px 30px; color:#666; font-size:10px; letter-spacing:1px;">
               18+ · VALID ID REQUIRED · DRINK RESPONSIBLY<br/>
