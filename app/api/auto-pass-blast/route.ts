@@ -185,7 +185,6 @@ export async function POST(req: NextRequest) {
           imageUrls: cleanImages,
           customMessage: message?.trim(),
           customSubject: finalSubject,
-          showPassInPromo: true,
         });
         sent++;
       } catch (err: any) {
