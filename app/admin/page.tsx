@@ -18,6 +18,7 @@ import { useTheme } from "@/lib/theme";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
 import OpenBarAnalyticsPanel from "@/components/OpenBarAnalyticsPanel";
 import FloorPlanPicker from "@/components/FloorPlanPicker";
+import FloorPlanPickerMulti from "@/components/FloorPlanPickerMulti";
 
 const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
@@ -1534,12 +1535,11 @@ function IssueTab(props: any) {
                     ⚠ Select an event date below to see table availability
                   </p>
                 )}
-                <FloorPlanPicker
+                <FloorPlanPickerMulti
                   value={tableNumber}
                   onChange={setTableNumber}
                   bookedTables={bookedTables}
-                  onConflict={handleConflict}
-                />
+                  onConflict={handleConflict} groupSize={groupSize} />
               </div>
             </div>
           </div>
