@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
 import { sendOpenBarPassEmail } from "@/lib/open-bar-email";
-import { generateOpenBarPdf } from "@/lib/open-bar-pdf";
+import { buildOpenBarPassPDF } from "@/lib/open-bar-pdf";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
 
     // Generate the branded PDF with QR code (same fn used at signup)
-    const pdfBuffer = await generateOpenBarPdf({
+    const pdfBuffer = await buildOpenBarPassPDF({
       ticketCode: signup.ticket_code,
       fullName: signup.full_name,
       eventDatetime: signup.event_datetime,
