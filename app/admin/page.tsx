@@ -64,7 +64,7 @@ type OpenBarSignup = {
   created_at: string;
 };
 
-type Tab = "issue" | "list" | "openbar" | "reminders";
+type Tab = "issue" | "list" | "openbar" | "reminders" | "autopass" | "issuepass";
 type CheckInFilter = "all" | "pending" | "checked_in";
 type GenderFilter = "all" | "male" | "female";
 type DateFilterMode = "specific" | "all" | "upcoming";
@@ -114,6 +114,7 @@ export default function AdminPage() {
   const [openBarGenderFilter, setOpenBarGenderFilter] = useState<GenderFilter>("all");
   const [openBarVipOnly, setOpenBarVipOnly] = useState(false);
   const [openBarCheckingIn, setOpenBarCheckingIn] = useState<Record<string, boolean>>({});
+  const [emailingPass, setEmailingPass] = useState<Record<string, boolean>>({});
 
   // Modals
   const [editingReservation, setEditingReservation] = useState<Registration | null>(null);
@@ -322,6 +323,31 @@ export default function AdminPage() {
     }
   }
 
+  async function emailExistingPass(s: OpenBarSignup) {
+    if (!confirm(`Email pass ${s.ticket_code} to ${s.full_name} (${s.email})?`)) return;
+    setEmailingPass((m) => ({ ...m, [s.id]: true }));
+    try {
+      const res = await fetch("/api/email-existing-pass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ signup_id: s.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send");
+      // Update email_sent in local state
+      setOpenBarSignups((prev) => prev.map((x) => (x.id === s.id ? { ...x, email_sent: true } : x)));
+      alert(`✓ Pass sent to ${s.email}`);
+    } catch (err: any) {
+      alert("Failed: " + err.message);
+    } finally {
+      setEmailingPass((m) => {
+        const next = { ...m };
+        delete next[s.id];
+        return next;
+      });
+    }
+  }
+
   async function handleIssueSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIssueError("");
@@ -507,6 +533,12 @@ export default function AdminPage() {
             <TabButton active={tab === "reminders"} onClick={() => setTab("reminders")}>
               Email Blast
             </TabButton>
+            <TabButton active={tab === "autopass"} onClick={() => setTab("autopass")}>
+              🎫 Auto-Pass
+            </TabButton>
+            <TabButton active={tab === "issuepass"} onClick={() => setTab("issuepass")}>
+              🎁 Issue Pass
+            </TabButton>
           </div>
 
           {tab === "issue" && (
@@ -538,6 +570,28 @@ export default function AdminPage() {
                 <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, phone, ticket, table..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
                 <button onClick={refreshList} disabled={listLoading} className="btn-outline px-5 py-3 text-xs">{listLoading ? "..." : "Refresh"}</button>
                 <button onClick={downloadCSV} className="btn-red px-5 py-3 text-xs">Export CSV</button>
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Reset ALL reservation check-ins?\n\nThis will mark all currently checked-in reservation tickets as pending again. Useful for starting fresh before a new event.\n\nThis cannot be undone. Continue?`)) return;
+                    try {
+                      const res = await fetch("/api/bulk-reset-checkins", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-admin-password": password },
+                        body: JSON.stringify({ target: "reservations", confirm: true }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || "Reset failed");
+                      alert(`✓ Reset ${data.tickets_reset} check-ins. Refreshing list...`);
+                      refreshList();
+                    } catch (err: any) {
+                      alert("Failed: " + err.message);
+                    }
+                  }}
+                  className="px-5 py-3 text-xs font-bold tracking-widest border border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 transition"
+                  title="Bulk reset all reservation check-ins"
+                >
+                  ↻ RESET CHECK-INS
+                </button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <FilterPill active={filter === "all"} onClick={() => setFilter("all")} label={`All (${dateFilteredRegs.length})`} />
@@ -582,6 +636,28 @@ export default function AdminPage() {
                 <input type="text" value={openBarSearch} onChange={(e) => setOpenBarSearch(e.target.value)} placeholder="Search name, email, phone, location, pass number..." className="tantra-input flex-1 min-w-[200px] px-4 py-3" />
                 <button onClick={() => loadOpenBar()} disabled={openBarLoading} className="btn-outline px-5 py-3 text-xs">
                   {openBarLoading ? "..." : "Refresh"}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Reset ALL Open Bar check-ins?\n\nThis will mark all currently checked-in guests as pending again. Useful for starting fresh before a new event.\n\nThis cannot be undone. Continue?`)) return;
+                    try {
+                      const res = await fetch("/api/bulk-reset-checkins", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-admin-password": password },
+                        body: JSON.stringify({ target: "openbar", confirm: true }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || "Reset failed");
+                      alert(`✓ Reset ${data.openbar_reset} check-ins. Refreshing list...`);
+                      loadOpenBar();
+                    } catch (err: any) {
+                      alert("Failed: " + err.message);
+                    }
+                  }}
+                  className="px-5 py-3 text-xs font-bold tracking-widest border border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 transition"
+                  title="Bulk reset all Open Bar check-ins"
+                >
+                  ↻ RESET CHECK-INS
                 </button>
               </div>
 
@@ -648,6 +724,8 @@ export default function AdminPage() {
                 onToggleCheckIn={toggleOpenBarCheckIn}
                 onDelete={(s) => setDeletingOpenBar(s)}
                 onToggleVip={(id, currentVip) => toggleVip("open_bar_signups", id, currentVip)}
+                onEmailPass={emailExistingPass}
+                emailingPass={emailingPass}
               />
 
               <OpenBarAnalyticsPanel signups={openBarSignups} />
@@ -656,6 +734,14 @@ export default function AdminPage() {
 
           {tab === "reminders" && (
             <RemindersTab password={password} />
+          )}
+
+          {tab === "autopass" && (
+            <AutoPassTab password={password} />
+          )}
+
+          {tab === "issuepass" && (
+            <IssuePassTab password={password} onCreated={loadOpenBar} />
           )}
         </div>
       </div>
@@ -850,7 +936,7 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                   </td>
                   <td className="px-3 py-3.5"><span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span></td>
                   <td className="px-3 py-3.5">
-                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number}</span> : <span className="text-subtle text-xs">—</span>}
+                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number.split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-3 py-3.5">
                     {ticket ? <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span> : <span className="text-subtle text-xs">—</span>}
@@ -893,7 +979,7 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-default text-base">{r.full_name}</span>
                     <span className="inline-block bg-tantra-red text-white px-2 py-0.5 font-bold text-xs">{r.group_size} {r.group_size === 1 ? "guest" : "guests"}</span>
-                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number}</span>}
+                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number.split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</span>}
                   </div>
                   <div className="text-xs text-muted mt-1 truncate">{r.email}</div>
                   <div className="text-xs text-default font-mono mt-0.5">{r.phone}</div>
@@ -942,12 +1028,14 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
   );
 }
 
-function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDelete, onToggleVip }: {
+function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDelete, onToggleVip, onEmailPass, emailingPass }: {
   signups: OpenBarSignup[]; totalSignups: number;
   checkingIn: Record<string, boolean>;
   onToggleCheckIn: (code: string, current: boolean) => void;
   onDelete: (s: OpenBarSignup) => void;
   onToggleVip: (id: string, currentVip: boolean) => void;
+  onEmailPass: (s: OpenBarSignup) => void;
+  emailingPass: Record<string, boolean>;
 }) {
   if (signups.length === 0) {
     return (
@@ -973,7 +1061,7 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
               <th className="px-2 py-4 label text-center">WA</th>
               <th className="px-3 py-4 label hidden xl:table-cell">Signed Up</th>
               <th className="px-3 py-4 label text-center">Status</th>
-              <th className="px-3 py-4 label text-center">Del</th>
+              <th className="px-3 py-4 label text-center">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1022,11 +1110,22 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
                     />
                   </td>
                   <td className="px-3 py-3.5 text-center">
-                    <button onClick={() => onDelete(s)} className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition" title="Delete">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button onClick={() => onEmailPass(s)} disabled={emailingPass[s.id]} className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition disabled:opacity-50" title="Email pass to guest">
+                        {emailingPass[s.id] ? (
+                          <span className="text-xs">...</span>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </button>
+                      <button onClick={() => onDelete(s)} className="w-8 h-8 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition" title="Delete">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -1094,6 +1193,15 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
                     onClick={() => onToggleCheckIn(s.ticket_code, s.checked_in)}
                   />
                 </div>
+                <button onClick={() => onEmailPass(s)} disabled={emailingPass[s.id]} className="w-10 h-10 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition flex-shrink-0 disabled:opacity-50" title="Email pass to guest" aria-label="Email pass">
+                  {emailingPass[s.id] ? (
+                    <span className="text-xs">...</span>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                </button>
                 <button onClick={() => onDelete(s)} className="w-10 h-10 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition flex-shrink-0" title="Delete" aria-label="Delete signup">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -1120,15 +1228,25 @@ function calculateAgeYears(dob: string): number {
 
 function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
   if (checkedIn) {
+    const checkedDate = checkedInAt ? new Date(checkedInAt) : null;
     return (
-      <button onClick={onClick} disabled={loading} className="inline-flex flex-col items-center gap-0.5 px-3 py-2 bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition disabled:opacity-50" title="Click to undo check-in">
+      <button onClick={onClick} disabled={loading} className="inline-flex flex-col items-center gap-0.5 px-3 py-2 bg-green-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-green-700 transition disabled:opacity-50 min-w-[90px]" title={checkedDate ? `Checked in ${checkedDate.toLocaleString()}` : "Click to undo check-in"}>
         <span className="flex items-center gap-1">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
           IN
         </span>
-        {checkedInAt && <span className="text-[9px] opacity-80">{new Date(checkedInAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>}
+        {checkedDate && (
+          <>
+            <span className="text-[9px] opacity-90 leading-tight font-semibold">
+              {checkedDate.toLocaleDateString([], { month: "short", day: "numeric" })}
+            </span>
+            <span className="text-[9px] opacity-80 leading-tight">
+              {checkedDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </span>
+          </>
+        )}
       </button>
     );
   }
@@ -1405,10 +1523,17 @@ function IssueTab(props: any) {
       if (!r.event_datetime) continue;
       const regDateKey = new Date(r.event_datetime).toISOString().slice(0, 10);
       if (regDateKey !== selectedDateKey) continue;
-      const tableId = r.table_number.trim().toUpperCase();
-      // Only keep first (or the most recent); any match is enough
-      if (!bookedOnSameDate.has(tableId)) {
-        bookedOnSameDate.set(tableId, r);
+      // table_number can contain a single table ("V2") or joined ("V2+V3")
+      const tableIds = r.table_number
+        .trim()
+        .toUpperCase()
+        .split("+")
+        .map((t: string) => t.trim())
+        .filter((t: string) => t.length > 0);
+      for (const tableId of tableIds) {
+        if (!bookedOnSameDate.has(tableId)) {
+          bookedOnSameDate.set(tableId, r);
+        }
       }
     }
   }
@@ -1444,7 +1569,7 @@ function IssueTab(props: any) {
             <span className="text-default font-semibold">{issueSuccess.clientName}</span>
             <span className="mx-2 text-tantra-red">·</span>
             {issueSuccess.guestCount} {issueSuccess.guestCount === 1 ? "guest" : "guests"}
-            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>Table {issueSuccess.tableNumber}</>}
+            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>{issueSuccess.tableNumber.includes("+") ? "Tables" : "Table"} {issueSuccess.tableNumber.toUpperCase().split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</>}
           </p>
 
           <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
@@ -1462,8 +1587,10 @@ function IssueTab(props: any) {
             <div className="font-mono text-default text-3xl font-black tracking-wider">{issueSuccess.ticketCode}</div>
             {issueSuccess.tableNumber && (
               <div className="mt-5 pt-5 border-t border-[var(--border)]">
-                <div className="label mb-2">TABLE</div>
-                <div className="display-text text-tantra-red text-2xl">{issueSuccess.tableNumber.toUpperCase()}</div>
+                <div className="label mb-2">{issueSuccess.tableNumber.includes("+") ? "TABLES" : "TABLE"}</div>
+                <div className="display-text text-tantra-red text-2xl">
+                  {issueSuccess.tableNumber.toUpperCase().split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join(" + ")}
+                </div>
               </div>
             )}
             {issueSuccess.notes && (
@@ -1539,7 +1666,9 @@ function IssueTab(props: any) {
                   value={tableNumber}
                   onChange={setTableNumber}
                   bookedTables={bookedTables}
-                  onConflict={handleConflict} groupSize={groupSize} />
+                  onConflict={handleConflict}
+                  groupSize={groupSize}
+                />
               </div>
             </div>
           </div>
@@ -2039,3 +2168,668 @@ function RemindersTab({ password }: { password: string }) {
   );
 }
 
+
+function AutoPassTab({ password }: { password: string }) {
+  type Recipient = {
+    id: string;
+    email: string;
+    full_name: string;
+    ticket_code: string | null;
+    group_size?: number;
+    table_number?: string | null;
+    gender?: "male" | "female" | null;
+    is_vip?: boolean;
+  };
+
+  const [openbarRecipients, setOpenbarRecipients] = useState<Recipient[]>([]);
+  const [reservationRecipients, setReservationRecipients] = useState<Recipient[]>([]);
+  const [selectedOpenbar, setSelectedOpenbar] = useState<Set<string>>(new Set());
+  const [selectedReservations, setSelectedReservations] = useState<Set<string>>(new Set());
+  const [loaded, setLoaded] = useState(false);
+  const [searchFilter, setSearchFilter] = useState("");
+  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [vipFilter, setVipFilter] = useState(false);
+
+  const [newEventDatetime, setNewEventDatetime] = useState<string>(() => {
+    // Default: next Saturday at 9pm
+    const d = new Date();
+    const day = d.getDay();
+    const daysUntilSat = (6 - day + 7) % 7 || 7;
+    d.setDate(d.getDate() + daysUntilSat);
+    d.setHours(21, 0, 0, 0);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mn = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${mn}`;
+  });
+
+  const [subject, setSubject] = useState("🎉 You're invited back — your VIP pass is ready");
+  const [message, setMessage] = useState("Great news — we have another Open Bar event coming up and you're invited back. Your new pass is below. Just show up at the door, no need to sign up again. See you there!");
+  const [imageUrls, setImageUrls] = useState<string[]>(["", "", ""]);
+
+  const [loadingList, setLoadingList] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{ sent: number; failed: number; total: number } | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  async function loadRecipients() {
+    setLoadingList(true);
+    setError("");
+    setResult(null);
+    try {
+      const res = await fetch("/api/send-reminders/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      setOpenbarRecipients(data.openbar || []);
+      setReservationRecipients(data.reservations || []);
+      setSelectedOpenbar(new Set((data.openbar || []).map((r: Recipient) => r.id)));
+      setSelectedReservations(new Set((data.reservations || []).map((r: Recipient) => r.id)));
+      setLoaded(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoadingList(false);
+    }
+  }
+
+  function toggleOne(group: "openbar" | "reservation", id: string) {
+    if (group === "openbar") {
+      const next = new Set(selectedOpenbar);
+      next.has(id) ? next.delete(id) : next.add(id);
+      setSelectedOpenbar(next);
+    } else {
+      const next = new Set(selectedReservations);
+      next.has(id) ? next.delete(id) : next.add(id);
+      setSelectedReservations(next);
+    }
+  }
+
+  function toggleAll(group: "openbar" | "reservation", filtered: Recipient[]) {
+    const allIds = filtered.map((r) => r.id);
+    if (group === "openbar") {
+      const allSelected = allIds.every((id) => selectedOpenbar.has(id));
+      const next = new Set(selectedOpenbar);
+      if (allSelected) allIds.forEach((id) => next.delete(id));
+      else allIds.forEach((id) => next.add(id));
+      setSelectedOpenbar(next);
+    } else {
+      const allSelected = allIds.every((id) => selectedReservations.has(id));
+      const next = new Set(selectedReservations);
+      if (allSelected) allIds.forEach((id) => next.delete(id));
+      else allIds.forEach((id) => next.add(id));
+      setSelectedReservations(next);
+    }
+  }
+
+  // Apply filters
+  const q = searchFilter.trim().toLowerCase();
+  function matchesSearch(r: Recipient): boolean {
+    if (!q) return true;
+    return r.full_name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
+  }
+  function matchesGender(r: Recipient): boolean {
+    if (genderFilter === "all") return true;
+    return r.gender === genderFilter;
+  }
+  function matchesVip(r: Recipient): boolean {
+    if (!vipFilter) return true;
+    return Boolean(r.is_vip);
+  }
+
+  const filteredOpenbar = openbarRecipients.filter((r) => matchesSearch(r) && matchesGender(r) && matchesVip(r));
+  const filteredReservations = genderFilter !== "all" ? [] : reservationRecipients.filter((r) => matchesSearch(r) && matchesVip(r));
+
+  const visibleOpenbarIds = new Set(filteredOpenbar.map((r) => r.id));
+  const visibleReservationIds = new Set(filteredReservations.map((r) => r.id));
+  const effectiveSelectedOpenbar = new Set(Array.from(selectedOpenbar).filter((id) => visibleOpenbarIds.has(id)));
+  const effectiveSelectedReservations = new Set(Array.from(selectedReservations).filter((id) => visibleReservationIds.has(id)));
+
+  const totalSelected = effectiveSelectedOpenbar.size + effectiveSelectedReservations.size;
+
+  async function handleBlast() {
+    setSendLoading(true);
+    setError("");
+    setResult(null);
+    setShowConfirm(false);
+    try {
+      const res = await fetch("/api/auto-pass-blast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({
+          openbar_ids: Array.from(effectiveSelectedOpenbar),
+          reservation_ids: Array.from(effectiveSelectedReservations),
+          new_event_datetime: new Date(newEventDatetime).toISOString(),
+          subject: subject.trim(),
+          message: message.trim() || undefined,
+          image_urls: imageUrls.filter((u) => u.trim().length > 0),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Send failed");
+      setResult({ sent: data.sent, failed: data.failed, total: data.total });
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSendLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 mb-3">
+        <span className="accent-line"></span>
+        <span className="label">AUTO-PASS BLAST</span>
+      </div>
+      <h2 className="display-text text-3xl text-default">🎫 Send New Passes to Existing Guests</h2>
+      <p className="text-muted text-sm">
+        Generate fresh pass codes for selected guests and email them. Their old pass is replaced — they just show up at the door for the new event.
+      </p>
+
+      <div className="bg-yellow-500/10 border border-yellow-500/40 text-yellow-600 dark:text-yellow-300 text-sm px-4 py-3">
+        ⚠ <strong>This is destructive:</strong> selected guests will get NEW pass codes. Their OLD pass codes will stop working at the door.
+      </div>
+
+      <div className="bg-card tantra-border-strong p-6 md:p-8 space-y-5">
+        {/* New event date */}
+        <div>
+          <label className="label block mb-2">NEW EVENT DATE & TIME</label>
+          <input
+            type="datetime-local"
+            value={newEventDatetime}
+            onChange={(e) => setNewEventDatetime(e.target.value)}
+            className="tantra-input w-full px-4 py-3 text-lg font-bold"
+          />
+          <p className="text-xs text-subtle mt-2">All new passes will be valid for this date.</p>
+        </div>
+
+        {/* Load recipients */}
+        <div>
+          <label className="label block mb-2">RECIPIENTS</label>
+          <button type="button" onClick={loadRecipients} disabled={loadingList} className="btn-outline w-full px-4 py-3 text-xs whitespace-nowrap">
+            {loadingList ? "Loading..." : loaded ? "↻ Reload Recipients" : "Load All Past Guests"}
+          </button>
+        </div>
+
+        {loaded && (
+          <>
+            {openbarRecipients.length === 0 && reservationRecipients.length === 0 ? (
+              <div className="bg-deep tantra-border p-6 text-center text-muted text-sm">No guests in the database yet.</div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <FilterPill active={genderFilter === "all"} onClick={() => setGenderFilter("all")} label="All" />
+                  <FilterPill active={genderFilter === "male"} onClick={() => setGenderFilter("male")} label={`♂ Male (${openbarRecipients.filter((r) => r.gender === "male").length})`} />
+                  <FilterPill active={genderFilter === "female"} onClick={() => setGenderFilter("female")} label={`♀ Female (${openbarRecipients.filter((r) => r.gender === "female").length})`} />
+                  <FilterPill active={vipFilter} onClick={() => setVipFilter(!vipFilter)} label={`⭐ VIP Only (${[...openbarRecipients, ...reservationRecipients].filter((r) => r.is_vip).length})`} />
+                </div>
+
+                {genderFilter !== "all" && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/40 text-yellow-500 text-xs px-4 py-2.5">
+                    ℹ Reservations hidden — they don't have gender data.
+                  </div>
+                )}
+
+                <input
+                  type="text"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Filter by name or email..."
+                  className="tantra-input w-full px-4 py-3 text-sm"
+                />
+
+                {filteredOpenbar.length > 0 && (
+                  <div className="border border-[var(--border)] bg-deep">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-card">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={filteredOpenbar.length > 0 && filteredOpenbar.every((r) => selectedOpenbar.has(r.id))}
+                          onChange={() => toggleAll("openbar", filteredOpenbar)}
+                          className="w-4 h-4 accent-tantra-red cursor-pointer"
+                        />
+                        <span className="label">OPEN BAR</span>
+                        <span className="text-xs text-muted">{effectiveSelectedOpenbar.size} / {filteredOpenbar.length} selected</span>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {filteredOpenbar.map((r) => (
+                        <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)] last:border-b-0 hover:bg-surface cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedOpenbar.has(r.id)}
+                            onChange={() => toggleOne("openbar", r.id)}
+                            className="w-4 h-4 accent-tantra-red cursor-pointer flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-default truncate flex items-center gap-1.5">
+                              {r.is_vip && <span className="text-yellow-500" title="VIP">⭐</span>}
+                              {r.gender === "male" && <span className="text-blue-400 text-xs" title="Male">♂</span>}
+                              {r.gender === "female" && <span className="text-pink-400 text-xs" title="Female">♀</span>}
+                              <span className="truncate">{r.full_name}</span>
+                            </div>
+                            <div className="text-xs text-muted truncate">{r.email}</div>
+                          </div>
+                          <div className="font-mono text-xs text-subtle flex-shrink-0">old: {r.ticket_code}</div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {filteredReservations.length > 0 && (
+                  <div className="border border-[var(--border)] bg-deep">
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] bg-card">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={filteredReservations.length > 0 && filteredReservations.every((r) => selectedReservations.has(r.id))}
+                          onChange={() => toggleAll("reservation", filteredReservations)}
+                          className="w-4 h-4 accent-tantra-red cursor-pointer"
+                        />
+                        <span className="label">RESERVATIONS</span>
+                        <span className="text-xs text-muted">{effectiveSelectedReservations.size} / {filteredReservations.length} selected</span>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {filteredReservations.map((r) => (
+                        <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)] last:border-b-0 hover:bg-surface cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedReservations.has(r.id)}
+                            onChange={() => toggleOne("reservation", r.id)}
+                            className="w-4 h-4 accent-tantra-red cursor-pointer flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-default truncate flex items-center gap-1.5">
+                              {r.is_vip && <span className="text-yellow-500" title="VIP">⭐</span>}
+                              <span>{r.full_name}</span>
+                              {r.group_size && <span className="text-xs text-muted ml-1">· {r.group_size}{r.group_size === 1 ? " guest" : " guests"}</span>}
+                            </div>
+                            <div className="text-xs text-muted truncate">{r.email}</div>
+                          </div>
+                          <div className="font-mono text-xs text-subtle flex-shrink-0">old: {r.ticket_code}</div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* Subject line */}
+        <div>
+          <label className="label block mb-2">SUBJECT LINE</label>
+          <input
+            type="text"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="tantra-input w-full px-4 py-3 text-sm"
+            maxLength={120}
+          />
+        </div>
+
+        {/* Image URLs */}
+        <div>
+          <label className="label block mb-2">IMAGE URLS <span className="normal-case tracking-normal text-subtle">(optional · up to 3)</span></label>
+          <div className="space-y-2">
+            {imageUrls.map((url, i) => (
+              <div key={i} className="flex gap-2">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => {
+                    const next = [...imageUrls];
+                    next[i] = e.target.value;
+                    setImageUrls(next);
+                  }}
+                  placeholder={i === 0 ? "https://i.imgur.com/xxxxx.jpg (main flyer)" : `https://i.imgur.com/... (extra ${i + 1})`}
+                  className="tantra-input flex-1 px-4 py-3 text-sm"
+                />
+                {url.trim() && (
+                  <div className="w-12 h-12 flex-shrink-0 bg-deep tantra-border overflow-hidden">
+                    <img src={url} alt="" className="w-full h-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Message */}
+        <div>
+          <label className="label block mb-2">MESSAGE</label>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={5}
+            className="tantra-input w-full px-4 py-3 text-sm"
+          />
+        </div>
+
+        {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
+
+        {result && (
+          <div className="bg-green-500/10 border border-green-500 text-green-500 text-sm px-4 py-3">
+            <div className="font-bold">✓ Auto-Pass Blast complete</div>
+            <div className="text-xs mt-1">
+              {result.sent} of {result.total} new passes delivered{result.failed > 0 && ` · ${result.failed} failed`}
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation dialog */}
+        {showConfirm ? (
+          <div className="bg-yellow-500/10 border-2 border-yellow-500 p-4 space-y-3">
+            <div className="font-bold text-yellow-500">⚠ Confirm Auto-Pass Blast</div>
+            <div className="text-sm text-default">
+              You're about to:
+              <ul className="list-disc list-inside mt-2 space-y-1 text-xs text-muted">
+                <li>Generate <strong className="text-default">{totalSelected} new pass codes</strong></li>
+                <li>Replace existing pass codes (old ones will stop working)</li>
+                <li>Reset their check-in status to pending</li>
+                <li>Email all {totalSelected} guests their new pass</li>
+                <li>Estimated time: ~{Math.ceil(totalSelected * 0.6 / 60)} minutes</li>
+              </ul>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => setShowConfirm(false)} className="btn-outline px-4 py-2 text-xs flex-1">Cancel</button>
+              <button onClick={handleBlast} disabled={sendLoading} className="btn-red px-4 py-2 text-xs flex-1">
+                {sendLoading ? "Sending..." : `YES, BLAST ${totalSelected} GUESTS`}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowConfirm(true)}
+            disabled={sendLoading || !loaded || totalSelected === 0 || !subject.trim() || !newEventDatetime}
+            className="btn-red w-full py-4 text-sm"
+          >
+            {sendLoading
+              ? `BLASTING ${totalSelected} GUESTS…`
+              : !loaded
+              ? "LOAD RECIPIENTS FIRST"
+              : totalSelected === 0
+              ? "SELECT AT LEAST ONE RECIPIENT"
+              : !subject.trim()
+              ? "SUBJECT REQUIRED"
+              : `🎫 BLAST ${totalSelected} NEW PASSES`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IssuePassTab({ password, onCreated }: { password: string; onCreated: () => void }) {
+  const [mode, setMode] = useState<"single" | "bulk">("single");
+
+  // Single mode
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("+297 ");
+
+  // Bulk mode
+  const [bulkText, setBulkText] = useState("");
+
+  const [eventDatetime, setEventDatetime] = useState<string>(() => {
+    // Default: next Saturday at 9pm
+    const d = new Date();
+    const day = d.getDay();
+    const daysUntilSat = (6 - day + 7) % 7 || 7;
+    d.setDate(d.getDate() + daysUntilSat);
+    d.setHours(21, 0, 0, 0);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mn = String(d.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}T${hh}:${mn}`;
+  });
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<{
+    created: { name: string; email: string; phone: string | null; ticket_code: string }[];
+    errors: { name: string; email: string; error: string }[];
+  } | null>(null);
+
+  // Parse bulk text into guests array
+  function parseBulkText(text: string): { full_name: string; email: string; phone?: string }[] {
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const guests: { full_name: string; email: string; phone?: string }[] = [];
+    for (const line of lines) {
+      // Split by comma or tab
+      const parts = line.split(/[,\t]/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length < 2) continue;
+      const [n, em, ph] = parts;
+      guests.push({
+        full_name: n,
+        email: em,
+        phone: ph || undefined,
+      });
+    }
+    return guests;
+  }
+
+  const bulkPreview = mode === "bulk" ? parseBulkText(bulkText) : [];
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setResult(null);
+
+    let guests: { full_name: string; email: string; phone?: string }[];
+
+    if (mode === "single") {
+      if (name.trim().length < 2) {
+        setError("Please enter a name");
+        return;
+      }
+      if (!isValidEmail(email)) {
+        setError("Please enter a valid email");
+        return;
+      }
+      guests = [
+        {
+          full_name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim() || undefined,
+        },
+      ];
+    } else {
+      guests = bulkPreview;
+      if (guests.length === 0) {
+        setError("Please paste at least one guest (Name, email, phone)");
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/issue-open-bar-pass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({
+          guests,
+          event_datetime: new Date(eventDatetime).toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setResult({ created: data.created || [], errors: data.errors || [] });
+      // Refresh open bar list so new entries show up
+      onCreated();
+      // Clear form on success (single mode)
+      if (mode === "single" && data.total_created > 0) {
+        setName("");
+        setEmail("");
+        setPhone("+297 ");
+      }
+      if (mode === "bulk" && data.total_errors === 0) {
+        setBulkText("");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <div className="flex items-center gap-3 mb-3">
+        <span className="accent-line"></span>
+        <span className="label">ISSUE PASS</span>
+      </div>
+      <h2 className="display-text text-3xl text-default">🎁 Issue Open Bar Pass</h2>
+      <p className="text-muted text-sm">
+        Generate Open Bar passes manually for VIPs, subscribers, or anyone you want to invite directly. No emails are sent — passes are saved to the Open Bar list and you can email them later from the Open Bar tab.
+      </p>
+
+      <div className="bg-card tantra-border-strong p-6 md:p-8 space-y-5">
+        {/* Mode toggle */}
+        <div>
+          <label className="label block mb-3">MODE</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setMode("single"); setResult(null); setError(""); }}
+              className={`py-3 text-xs font-bold tracking-widest border transition-all ${mode === "single" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}
+            >
+              SINGLE GUEST
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode("bulk"); setResult(null); setError(""); }}
+              className={`py-3 text-xs font-bold tracking-widest border transition-all ${mode === "bulk" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}
+            >
+              BULK IMPORT
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Event date */}
+          <div>
+            <label className="label block mb-2">EVENT DATE & TIME</label>
+            <input
+              type="datetime-local"
+              value={eventDatetime}
+              onChange={(e) => setEventDatetime(e.target.value)}
+              className="tantra-input w-full px-4 py-3 text-base font-bold"
+              required
+            />
+            <p className="text-xs text-subtle mt-1">All passes will be valid for this date.</p>
+          </div>
+
+          {mode === "single" ? (
+            <>
+              <div>
+                <label className="label block mb-2">FULL NAME</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Guest's full name"
+                  className="tantra-input w-full px-4 py-3"
+                  required
+                />
+              </div>
+              <div>
+                <label className="label block mb-2">EMAIL</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="guest@example.com"
+                  className="tantra-input w-full px-4 py-3"
+                  required
+                />
+              </div>
+              <div>
+                <label className="label block mb-2">PHONE <span className="normal-case tracking-normal text-subtle">(optional)</span></label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+297 123 4567"
+                  className="tantra-input w-full px-4 py-3"
+                />
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="label block mb-2">PASTE GUEST LIST</label>
+              <p className="text-xs text-subtle mb-2">
+                One guest per line. Format: <span className="font-mono">Name, email, phone</span> (phone optional). Comma or tab separated.
+              </p>
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"John Doe, john@example.com, +297 123 4567\nMaria Lopez, maria@gmail.com\nCarlos Smith, carlos@email.com, +297 555 1234"}
+                rows={10}
+                className="tantra-input w-full px-4 py-3 text-sm font-mono"
+              />
+              <p className="text-xs text-muted mt-2">
+                {bulkText.trim() ? `${bulkPreview.length} valid guests detected` : "Waiting for input..."}
+              </p>
+            </div>
+          )}
+
+          {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
+
+          {result && (
+            <div className="space-y-3">
+              {result.created.length > 0 && (
+                <div className="bg-green-500/10 border border-green-500 text-green-500 text-sm px-4 py-3">
+                  <div className="font-bold mb-2">✓ {result.created.length} pass{result.created.length === 1 ? "" : "es"} created</div>
+                  <div className="max-h-64 overflow-y-auto space-y-1.5 text-xs font-mono">
+                    {result.created.map((c) => (
+                      <div key={c.ticket_code} className="flex items-center justify-between gap-3 px-3 py-1.5 bg-deep border border-green-500/30">
+                        <span className="text-default truncate">{c.name}</span>
+                        <span className="text-default font-bold">{c.ticket_code}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs mt-3 text-default">
+                    💡 New passes are now in the <strong>Open Bar tab</strong>. Use the "Email" button next to each row to send them, or use Email Blast for bulk.
+                  </p>
+                </div>
+              )}
+              {result.errors.length > 0 && (
+                <div className="bg-yellow-500/10 border border-yellow-500 text-yellow-500 text-sm px-4 py-3">
+                  <div className="font-bold mb-2">⚠ {result.errors.length} skipped</div>
+                  <div className="max-h-32 overflow-y-auto space-y-1 text-xs">
+                    {result.errors.map((e, i) => (
+                      <div key={i} className="text-yellow-400">
+                        <span className="font-semibold">{e.name}</span> ({e.email}): {e.error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} className="btn-red w-full py-4 text-sm">
+            {loading
+              ? "GENERATING…"
+              : mode === "single"
+              ? "🎁 GENERATE PASS"
+              : `🎁 GENERATE ${bulkPreview.length} PASSES`}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
