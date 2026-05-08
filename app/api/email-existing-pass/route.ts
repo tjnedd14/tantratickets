@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
-import { sendReminderEmail } from "@/lib/reminder-email";
+import { sendOpenBarPassEmail } from "@/lib/open-bar-email";
+import { generateOpenBarPdf } from "@/lib/open-bar-pdf";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -9,7 +10,8 @@ function checkAuth(req: NextRequest): boolean {
 
 /**
  * POST /api/email-existing-pass
- * Sends a single open bar signup their EXISTING pass code (no regeneration).
+ * Sends a single open bar signup their EXISTING pass code, with the
+ * branded PDF attachment (same as the signup confirmation flow).
  *
  * Body: { signup_id: string }
  */
@@ -40,21 +42,27 @@ export async function POST(req: NextRequest) {
     const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Tantra Night Club";
     const venueName = process.env.NEXT_PUBLIC_VENUE_NAME || "Tantra Aruba";
 
-    // Send the email — using promo subject style with pass code shown
-    await sendReminderEmail({
-      to: signup.email,
+    // Generate the branded PDF with QR code (same fn used at signup)
+    const pdfBuffer = await generateOpenBarPdf({
+      ticketCode: signup.ticket_code,
       fullName: signup.full_name,
       eventDatetime: signup.event_datetime,
       eventName,
       venueName,
-      ticketCode: signup.ticket_code,
-      isOpenBar: true,
-      imageUrls: [],
-      customSubject: "🎁 Your Open Bar Pass at Tantra",
-      customMessage: "Your Open Bar Pass is below. Just show this at the door — no need to sign up. See you there!",
     });
 
-    // Mark as email sent
+    // Send using the same email function the signup flow uses (with PDF attached)
+    await sendOpenBarPassEmail({
+      to: signup.email,
+      fullName: signup.full_name,
+      ticketCode: signup.ticket_code,
+      eventDatetime: signup.event_datetime,
+      eventName,
+      venueName,
+      pdfBuffer,
+    });
+
+    // Mark email_sent
     await supabase
       .from("open_bar_signups")
       .update({ email_sent: true, email_sent_at: new Date().toISOString() })
