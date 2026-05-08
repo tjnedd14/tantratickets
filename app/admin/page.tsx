@@ -943,7 +943,7 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                   </td>
                   <td className="px-3 py-3.5"><span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span></td>
                   <td className="px-3 py-3.5">
-                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number.split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</span> : <span className="text-subtle text-xs">—</span>}
+                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number.split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join("+")}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-3 py-3.5">
                     {ticket ? <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span> : <span className="text-subtle text-xs">—</span>}
@@ -986,7 +986,7 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-default text-base">{r.full_name}</span>
                     <span className="inline-block bg-tantra-red text-white px-2 py-0.5 font-bold text-xs">{r.group_size} {r.group_size === 1 ? "guest" : "guests"}</span>
-                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number.split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</span>}
+                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number.split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join("+")}</span>}
                   </div>
                   <div className="text-xs text-muted mt-1 truncate">{r.email}</div>
                   <div className="text-xs text-default font-mono mt-0.5">{r.phone}</div>
@@ -1576,7 +1576,7 @@ function IssueTab(props: any) {
             <span className="text-default font-semibold">{issueSuccess.clientName}</span>
             <span className="mx-2 text-tantra-red">·</span>
             {issueSuccess.guestCount} {issueSuccess.guestCount === 1 ? "guest" : "guests"}
-            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>{issueSuccess.tableNumber.includes("+") ? "Tables" : "Table"} {issueSuccess.tableNumber.toUpperCase().split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</>}
+            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>{issueSuccess.tableNumber.includes("+") ? "Tables" : "Table"} {issueSuccess.tableNumber.toUpperCase().split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join("+")}</>}
           </p>
 
           <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
@@ -1596,7 +1596,7 @@ function IssueTab(props: any) {
               <div className="mt-5 pt-5 border-t border-[var(--border)]">
                 <div className="label mb-2">{issueSuccess.tableNumber.includes("+") ? "TABLES" : "TABLE"}</div>
                 <div className="display-text text-tantra-red text-2xl">
-                  {issueSuccess.tableNumber.toUpperCase().split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join(" + ")}
+                  {issueSuccess.tableNumber.toUpperCase().split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join(" + ")}
                 </div>
               </div>
             )}
