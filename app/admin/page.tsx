@@ -2862,6 +2862,7 @@ function SubscribersTab({ password }: { password: string }) {
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const [showImport, setShowImport] = useState(false);
+  const [importMethod, setImportMethod] = useState<"paste" | "csv">("paste");
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{
@@ -2869,6 +2870,12 @@ function SubscribersTab({ password }: { password: string }) {
     duplicates: number;
     invalid: number;
     invalid_examples: string[];
+  } | null>(null);
+  const [csvPreview, setCsvPreview] = useState<{
+    fileName: string;
+    totalRows: number;
+    detectedColumn: string | null;
+    phones: string[];
   } | null>(null);
 
   async function load() {
@@ -2900,12 +2907,22 @@ function SubscribersTab({ password }: { password: string }) {
     setImportResult(null);
     setError("");
     try {
-      // Parse: split by newlines, commas, or spaces — be flexible
-      const lines = importText.split(/[\r\n,;]/).map((s) => s.trim()).filter(Boolean);
-      if (lines.length === 0) {
-        setError("Paste at least one phone number");
-        setImporting(false);
-        return;
+      let lines: string[];
+      if (importMethod === "csv") {
+        if (!csvPreview || csvPreview.phones.length === 0) {
+          setError("No phone numbers detected in the CSV. Try the Paste List tab.");
+          setImporting(false);
+          return;
+        }
+        lines = csvPreview.phones;
+      } else {
+        // Paste mode: split by newlines, commas, or spaces — be flexible
+        lines = importText.split(/[\r\n,;]/).map((s) => s.trim()).filter(Boolean);
+        if (lines.length === 0) {
+          setError("Paste at least one phone number");
+          setImporting(false);
+          return;
+        }
       }
       const res = await fetch("/api/subscribers/import", {
         method: "POST",
@@ -2917,12 +2934,85 @@ function SubscribersTab({ password }: { password: string }) {
       setImportResult(data);
       if (data.created > 0) {
         setImportText("");
+        setCsvPreview(null);
         await load();
       }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setImporting(false);
+    }
+  }
+
+  /**
+   * Parse a CSV file client-side and auto-detect which column contains phone numbers.
+   * Strategy: parse all rows, score each column by what fraction of its values look phone-shaped,
+   * pick the highest-scoring column above a threshold.
+   */
+  async function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      const text = await file.text();
+      const rows = parseCsvText(text);
+      if (rows.length === 0) {
+        setError("CSV is empty.");
+        return;
+      }
+
+      // Determine if first row is a header
+      const firstRow = rows[0];
+      const firstRowHasPhones = firstRow.filter((c) => looksLikePhone(c)).length;
+      const hasHeader = firstRowHasPhones === 0 && rows.length > 1;
+      const header = hasHeader ? firstRow.map((h, i) => h.trim() || `Column ${i + 1}`) : firstRow.map((_, i) => `Column ${i + 1}`);
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+
+      // Score each column
+      const numCols = Math.max(...rows.map((r) => r.length));
+      let bestCol = -1;
+      let bestScore = 0;
+      for (let c = 0; c < numCols; c++) {
+        let phoneCount = 0;
+        let total = 0;
+        for (const row of dataRows) {
+          const cell = (row[c] || "").trim();
+          if (!cell) continue;
+          total++;
+          if (looksLikePhone(cell)) phoneCount++;
+        }
+        if (total === 0) continue;
+        const score = phoneCount / total;
+        // Require at least 50% of non-empty cells to look like phones
+        if (score > bestScore && score >= 0.5) {
+          bestScore = score;
+          bestCol = c;
+        }
+      }
+
+      let phones: string[] = [];
+      let detectedColumn: string | null = null;
+      if (bestCol >= 0) {
+        detectedColumn = header[bestCol];
+        for (const row of dataRows) {
+          const v = (row[bestCol] || "").trim();
+          if (v) phones.push(v);
+        }
+        // Filter to only ones that look like phones (extra safety)
+        phones = phones.filter((p) => looksLikePhone(p));
+      }
+
+      setCsvPreview({
+        fileName: file.name,
+        totalRows: dataRows.length,
+        detectedColumn,
+        phones,
+      });
+    } catch (err: any) {
+      setError("Failed to read CSV: " + (err?.message || err));
+    } finally {
+      // Reset the input so the same file can be re-selected
+      e.target.value = "";
     }
   }
 
@@ -3059,20 +3149,106 @@ function SubscribersTab({ password }: { password: string }) {
         <div className="bg-card tantra-border-strong p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="display-text text-xl">Import Phone Numbers</h3>
-            <button onClick={() => { setShowImport(false); setImportResult(null); setImportText(""); }} className="text-muted hover:text-tantra-red">
+            <button onClick={() => { setShowImport(false); setImportResult(null); setImportText(""); setCsvPreview(null); }} className="text-muted hover:text-tantra-red">
               ✕
             </button>
           </div>
-          <p className="text-sm text-muted">
-            Paste phone numbers below — one per line, or separated by commas. Format like <span className="font-mono text-default">+297 123 4567</span> or <span className="font-mono text-default">2971234567</span>. Duplicates and invalid numbers are skipped automatically.
-          </p>
-          <textarea
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            rows={8}
-            placeholder={"+297 123 4567\n+297 555 1234\n2978889999\n..."}
-            className="tantra-input w-full px-4 py-3 text-sm font-mono"
-          />
+
+          {/* Method tabs */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setImportMethod("paste")}
+              className={`py-3 text-xs font-bold tracking-widest border transition-all ${importMethod === "paste" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}
+            >
+              📝 PASTE LIST
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportMethod("csv")}
+              className={`py-3 text-xs font-bold tracking-widest border transition-all ${importMethod === "csv" ? "bg-tantra-red border-tantra-red text-white" : "border-[var(--border)] text-muted hover:border-[var(--border-strong)]"}`}
+            >
+              📄 UPLOAD CSV
+            </button>
+          </div>
+
+          {importMethod === "paste" ? (
+            <>
+              <p className="text-sm text-muted">
+                Paste phone numbers below — one per line, or separated by commas. Format like <span className="font-mono text-default">+297 123 4567</span> or <span className="font-mono text-default">2971234567</span>. Duplicates and invalid numbers are skipped automatically.
+              </p>
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                rows={8}
+                placeholder={"+297 123 4567\n+297 555 1234\n2978889999\n..."}
+                className="tantra-input w-full px-4 py-3 text-sm font-mono"
+              />
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted">
+                Upload a CSV file. The system will automatically find the column with phone numbers — works with exports from Google Contacts, Outlook, iPhone, your CRM, or a simple single-column list.
+              </p>
+              <div className="bg-deep border-2 border-dashed border-[var(--border-strong)] p-6 text-center">
+                <input
+                  type="file"
+                  accept=".csv,.txt,text/csv,text/plain"
+                  onChange={handleCsvFile}
+                  className="hidden"
+                  id="csv-file-input"
+                />
+                <label htmlFor="csv-file-input" className="cursor-pointer inline-flex flex-col items-center gap-2">
+                  <svg className="w-12 h-12 text-tantra-red" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                  </svg>
+                  <span className="display-text text-base text-default">Choose CSV file</span>
+                  <span className="text-xs text-muted">or drag & drop here</span>
+                </label>
+              </div>
+
+              {csvPreview && (
+                <div className="bg-deep tantra-border p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-muted">
+                      <span className="text-default font-bold">{csvPreview.fileName}</span> · {csvPreview.totalRows} rows
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCsvPreview(null)}
+                      className="text-xs text-muted hover:text-tantra-red"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  {csvPreview.detectedColumn !== null && (
+                    <div className="text-xs">
+                      <span className="text-muted">Detected phone column:</span>{" "}
+                      <span className="font-mono text-default font-bold">{csvPreview.detectedColumn}</span>{" "}
+                      <span className="text-green-500">→ {csvPreview.phones.length} valid phone{csvPreview.phones.length === 1 ? "" : "s"} found</span>
+                    </div>
+                  )}
+                  {csvPreview.detectedColumn === null && (
+                    <div className="text-xs text-yellow-500">
+                      ⚠ Couldn't auto-detect a phone column. Try the "Paste List" tab instead, or check your CSV has phone-shaped values.
+                    </div>
+                  )}
+                  {csvPreview.phones.length > 0 && (
+                    <div className="font-mono text-xs text-muted bg-card border border-[var(--border)] px-3 py-2 max-h-24 overflow-y-auto">
+                      <div className="text-default font-bold mb-1">Preview (first 5):</div>
+                      {csvPreview.phones.slice(0, 5).map((p, i) => (
+                        <div key={i}>· {p}</div>
+                      ))}
+                      {csvPreview.phones.length > 5 && (
+                        <div className="text-subtle">+ {csvPreview.phones.length - 5} more...</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
           {importResult && (
             <div className="space-y-2">
               <div className="bg-green-500/10 border border-green-500 text-green-500 text-sm px-4 py-3">
@@ -3087,9 +3263,20 @@ function SubscribersTab({ password }: { password: string }) {
           )}
           {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
           <div className="flex gap-2">
-            <button onClick={() => { setShowImport(false); setImportResult(null); setImportText(""); }} className="btn-outline px-4 py-2.5 text-xs flex-1">Close</button>
-            <button onClick={handleImport} disabled={importing || !importText.trim()} className="btn-red px-4 py-2.5 text-xs flex-1">
-              {importing ? "Importing..." : "Import Numbers"}
+            <button onClick={() => { setShowImport(false); setImportResult(null); setImportText(""); setCsvPreview(null); }} className="btn-outline px-4 py-2.5 text-xs flex-1">Close</button>
+            <button
+              onClick={handleImport}
+              disabled={
+                importing ||
+                (importMethod === "paste" ? !importText.trim() : !csvPreview || csvPreview.phones.length === 0)
+              }
+              className="btn-red px-4 py-2.5 text-xs flex-1"
+            >
+              {importing
+                ? "Importing..."
+                : importMethod === "csv" && csvPreview
+                ? `Import ${csvPreview.phones.length} Numbers`
+                : "Import Numbers"}
             </button>
           </div>
         </div>
@@ -3173,4 +3360,91 @@ function SubscribersTab({ password }: { password: string }) {
       )}
     </div>
   );
+}
+
+/**
+ * Minimal CSV parser. Handles quoted fields, escaped quotes ("") inside quotes,
+ * commas inside quoted fields, and CRLF/LF line endings. No external dep.
+ */
+function parseCsvText(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          // Escaped quote
+          cell += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      cell += ch;
+      i++;
+      continue;
+    }
+    // Not in quotes
+    if (ch === '"' && cell.length === 0) {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (ch === ",") {
+      row.push(cell);
+      cell = "";
+      i++;
+      continue;
+    }
+    if (ch === "\r") {
+      i++;
+      continue;
+    }
+    if (ch === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      i++;
+      continue;
+    }
+    cell += ch;
+    i++;
+  }
+  // Last cell / row
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+  // Drop fully empty trailing rows
+  while (rows.length > 0 && rows[rows.length - 1].every((c) => c.trim() === "")) {
+    rows.pop();
+  }
+  return rows;
+}
+
+/**
+ * Heuristic: does this string look like a phone number?
+ * Counts digits — accepts 7-15 digits with optional +, spaces, dashes, parens.
+ * Rejects pure-text, dates, emails, etc.
+ */
+function looksLikePhone(s: string): boolean {
+  const trimmed = s.trim();
+  if (!trimmed) return false;
+  // Reject obvious non-phones
+  if (trimmed.includes("@")) return false; // email
+  if (/[a-zA-Z]/.test(trimmed)) return false; // any letter → not phone
+  // Count digits
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return false;
+  // Reject if it has too many slashes (probably a date like 2024/01/15)
+  const slashes = (trimmed.match(/\//g) || []).length;
+  if (slashes >= 2) return false;
+  return true;
 }
