@@ -64,7 +64,7 @@ type OpenBarSignup = {
   created_at: string;
 };
 
-type Tab = "issue" | "list" | "openbar" | "reminders" | "autopass" | "issuepass";
+type Tab = "issue" | "list" | "openbar" | "reminders" | "autopass" | "issuepass" | "subscribers";
 type CheckInFilter = "all" | "pending" | "checked_in";
 type GenderFilter = "all" | "male" | "female";
 type DateFilterMode = "specific" | "all" | "upcoming";
@@ -539,6 +539,9 @@ export default function AdminPage() {
             <TabButton active={tab === "issuepass"} onClick={() => setTab("issuepass")}>
               🎁 Issue Pass
             </TabButton>
+            <TabButton active={tab === "subscribers"} onClick={() => setTab("subscribers")}>
+              📱 Subscribers
+            </TabButton>
           </div>
 
           {tab === "issue" && (
@@ -743,6 +746,10 @@ export default function AdminPage() {
           {tab === "issuepass" && (
             <IssuePassTab password={password} onCreated={loadOpenBar} />
           )}
+
+          {tab === "subscribers" && (
+            <SubscribersTab password={password} />
+          )}
         </div>
       </div>
 
@@ -936,7 +943,7 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                   </td>
                   <td className="px-3 py-3.5"><span className="inline-block bg-tantra-red text-white px-3 py-1 font-bold text-sm">{r.group_size}</span></td>
                   <td className="px-3 py-3.5">
-                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number.split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join("+")}</span> : <span className="text-subtle text-xs">—</span>}
+                    {r.table_number ? <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2.5 py-1 font-bold text-xs uppercase">{r.table_number.split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</span> : <span className="text-subtle text-xs">—</span>}
                   </td>
                   <td className="px-3 py-3.5">
                     {ticket ? <span className="font-mono text-default text-xs font-bold">{ticket.ticket_code}</span> : <span className="text-subtle text-xs">—</span>}
@@ -979,7 +986,7 @@ function GuestTable({ registrations, totalRegistrations, checkingIn, onToggleChe
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-default text-base">{r.full_name}</span>
                     <span className="inline-block bg-tantra-red text-white px-2 py-0.5 font-bold text-xs">{r.group_size} {r.group_size === 1 ? "guest" : "guests"}</span>
-                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number.split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join("+")}</span>}
+                    {r.table_number && <span className="inline-block bg-surface border border-tantra-red text-tantra-red px-2 py-0.5 font-bold text-xs uppercase">{r.table_number.split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</span>}
                   </div>
                   <div className="text-xs text-muted mt-1 truncate">{r.email}</div>
                   <div className="text-xs text-default font-mono mt-0.5">{r.phone}</div>
@@ -1569,7 +1576,7 @@ function IssueTab(props: any) {
             <span className="text-default font-semibold">{issueSuccess.clientName}</span>
             <span className="mx-2 text-tantra-red">·</span>
             {issueSuccess.guestCount} {issueSuccess.guestCount === 1 ? "guest" : "guests"}
-            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>{issueSuccess.tableNumber.includes("+") ? "Tables" : "Table"} {issueSuccess.tableNumber.toUpperCase().split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join("+")}</>}
+            {issueSuccess.tableNumber && <><span className="mx-2 text-tantra-red">·</span>{issueSuccess.tableNumber.includes("+") ? "Tables" : "Table"} {issueSuccess.tableNumber.toUpperCase().split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join("+")}</>}
           </p>
 
           <div className="bg-deep border border-tantra-red p-6 mb-5 text-center relative">
@@ -1589,7 +1596,7 @@ function IssueTab(props: any) {
               <div className="mt-5 pt-5 border-t border-[var(--border)]">
                 <div className="label mb-2">{issueSuccess.tableNumber.includes("+") ? "TABLES" : "TABLE"}</div>
                 <div className="display-text text-tantra-red text-2xl">
-                  {issueSuccess.tableNumber.toUpperCase().split("+").map((t: string) => t.startsWith("T3B") ? "T3" : t).join(" + ")}
+                  {issueSuccess.tableNumber.toUpperCase().split("+").map((t) => t.startsWith("T3B") ? "T3" : t).join(" + ")}
                 </div>
               </div>
             )}
@@ -2830,6 +2837,340 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+function SubscribersTab({ password }: { password: string }) {
+  type Subscriber = {
+    id: string;
+    phone: string;
+    opted_in: boolean;
+    source: string;
+    last_messaged_at: string | null;
+    created_at: string;
+  };
+
+  const [subs, setSubs] = useState<Subscriber[]>([]);
+  const [total, setTotal] = useState(0);
+  const [optedInCount, setOptedInCount] = useState(0);
+  const [sources, setSources] = useState<Record<string, number>>({});
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    created: number;
+    duplicates: number;
+    invalid: number;
+    invalid_examples: string[];
+  } | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/subscribers", {
+        headers: { "x-admin-password": password },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Load failed");
+      setSubs(data.subscribers || []);
+      setTotal(data.total || 0);
+      setOptedInCount(data.opted_in_count || 0);
+      setSources(data.sources || {});
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function handleImport() {
+    setImporting(true);
+    setImportResult(null);
+    setError("");
+    try {
+      // Parse: split by newlines, commas, or spaces — be flexible
+      const lines = importText.split(/[\r\n,;]/).map((s) => s.trim()).filter(Boolean);
+      if (lines.length === 0) {
+        setError("Paste at least one phone number");
+        setImporting(false);
+        return;
+      }
+      const res = await fetch("/api/subscribers/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ phones: lines }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      setImportResult(data);
+      if (data.created > 0) {
+        setImportText("");
+        await load();
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleDelete(s: Subscriber) {
+    if (!confirm(`Remove ${s.phone} from subscribers?\n\nThey won't receive future WhatsApp messages.`)) return;
+    try {
+      const res = await fetch("/api/subscribers", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ id: s.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      setSubs((prev) => prev.filter((x) => x.id !== s.id));
+      setTotal((t) => t - 1);
+      if (s.opted_in) setOptedInCount((c) => c - 1);
+    } catch (err: any) {
+      alert("Failed: " + err.message);
+    }
+  }
+
+  async function handleToggleOptIn(s: Subscriber) {
+    const newVal = !s.opted_in;
+    setSubs((prev) => prev.map((x) => (x.id === s.id ? { ...x, opted_in: newVal } : x)));
+    setOptedInCount((c) => (newVal ? c + 1 : c - 1));
+    try {
+      const res = await fetch("/api/subscribers", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({ id: s.id, opted_in: newVal }),
+      });
+      if (!res.ok) {
+        // rollback
+        setSubs((prev) => prev.map((x) => (x.id === s.id ? { ...x, opted_in: !newVal } : x)));
+        setOptedInCount((c) => (newVal ? c - 1 : c + 1));
+      }
+    } catch {
+      setSubs((prev) => prev.map((x) => (x.id === s.id ? { ...x, opted_in: !newVal } : x)));
+      setOptedInCount((c) => (newVal ? c - 1 : c + 1));
+    }
+  }
+
+  function downloadCSV() {
+    const rows = [["phone", "opted_in", "source", "created_at"]];
+    for (const s of subs) {
+      rows.push([s.phone, String(s.opted_in), s.source, s.created_at]);
+    }
+    const csv = rows.map((row) => row.map((cell) => `"${(cell || "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tantra-subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Filter subs
+  const q = search.trim().toLowerCase();
+  const filteredSubs = subs.filter((s) => {
+    if (sourceFilter !== "all" && s.source !== sourceFilter) return false;
+    if (q && !s.phone.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 mb-3">
+        <span className="accent-line"></span>
+        <span className="label">SUBSCRIBERS</span>
+      </div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="display-text text-3xl text-default">📱 WhatsApp Subscriber List</h2>
+          <p className="text-muted text-sm mt-1">
+            Phone numbers for WhatsApp/SMS marketing. Open Bar guests with phones are auto-imported.
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setShowImport(true)} className="btn-red px-4 py-2.5 text-xs">
+            + Import Numbers
+          </button>
+          <button onClick={downloadCSV} disabled={subs.length === 0} className="btn-outline px-4 py-2.5 text-xs">
+            Export CSV
+          </button>
+          <button onClick={load} disabled={loading} className="btn-outline px-4 py-2.5 text-xs">
+            {loading ? "..." : "↻ Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">TOTAL</div>
+          <div className="display-text text-3xl text-default">{total}</div>
+        </div>
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">OPTED IN</div>
+          <div className="display-text text-3xl text-green-500">{optedInCount}</div>
+        </div>
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">FROM OPEN BAR</div>
+          <div className="display-text text-3xl text-default">{sources.open_bar || 0}</div>
+        </div>
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">MANUAL IMPORT</div>
+          <div className="display-text text-3xl text-default">{(sources.csv_import || 0) + (sources.manual || 0)}</div>
+        </div>
+      </div>
+
+      {/* WhatsApp send (placeholder, disabled) */}
+      <div className="bg-yellow-500/10 border border-yellow-500/40 px-4 py-3 flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-2">
+          <span className="text-yellow-500 text-lg">⚠</span>
+          <div className="text-sm text-default">
+            <div className="font-bold">WhatsApp send is not active yet</div>
+            <div className="text-xs text-muted mt-0.5">
+              Connect your Meta WhatsApp Business API (WABA) to send messages directly from this dashboard. Until then, export CSV and use Twilio / your phone.
+            </div>
+          </div>
+        </div>
+        <button
+          disabled
+          className="px-5 py-2.5 text-xs font-bold tracking-widest bg-deep border border-[var(--border)] text-subtle cursor-not-allowed flex-shrink-0"
+          title="Connect Meta WABA first"
+        >
+          🚀 SEND WHATSAPP (LOCKED)
+        </button>
+      </div>
+
+      {/* Import dialog */}
+      {showImport && (
+        <div className="bg-card tantra-border-strong p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="display-text text-xl">Import Phone Numbers</h3>
+            <button onClick={() => { setShowImport(false); setImportResult(null); setImportText(""); }} className="text-muted hover:text-tantra-red">
+              ✕
+            </button>
+          </div>
+          <p className="text-sm text-muted">
+            Paste phone numbers below — one per line, or separated by commas. Format like <span className="font-mono text-default">+297 123 4567</span> or <span className="font-mono text-default">2971234567</span>. Duplicates and invalid numbers are skipped automatically.
+          </p>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            rows={8}
+            placeholder={"+297 123 4567\n+297 555 1234\n2978889999\n..."}
+            className="tantra-input w-full px-4 py-3 text-sm font-mono"
+          />
+          {importResult && (
+            <div className="space-y-2">
+              <div className="bg-green-500/10 border border-green-500 text-green-500 text-sm px-4 py-3">
+                ✓ {importResult.created} new subscribers added{importResult.duplicates > 0 && ` · ${importResult.duplicates} duplicates skipped`}{importResult.invalid > 0 && ` · ${importResult.invalid} invalid skipped`}
+              </div>
+              {importResult.invalid_examples && importResult.invalid_examples.length > 0 && (
+                <div className="bg-yellow-500/10 border border-yellow-500 text-yellow-500 text-xs px-4 py-2.5">
+                  Examples of invalid numbers: {importResult.invalid_examples.map((e) => `"${e}"`).join(", ")}
+                </div>
+              )}
+            </div>
+          )}
+          {error && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
+          <div className="flex gap-2">
+            <button onClick={() => { setShowImport(false); setImportResult(null); setImportText(""); }} className="btn-outline px-4 py-2.5 text-xs flex-1">Close</button>
+            <button onClick={handleImport} disabled={importing || !importText.trim()} className="btn-red px-4 py-2.5 text-xs flex-1">
+              {importing ? "Importing..." : "Import Numbers"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Search + filters */}
+      <div className="flex flex-wrap gap-3">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by phone number..."
+          className="tantra-input flex-1 min-w-[200px] px-4 py-3 text-sm"
+        />
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+          className="tantra-input px-4 py-3 text-xs font-bold tracking-wider"
+        >
+          <option value="all">ALL SOURCES</option>
+          <option value="open_bar">Open Bar</option>
+          <option value="reservation">Reservation</option>
+          <option value="csv_import">CSV Import</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+
+      {error && !showImport && <div className="bg-tantra-red/10 border border-tantra-red text-red-500 text-sm px-4 py-3">{error}</div>}
+
+      {/* List */}
+      {loading && subs.length === 0 ? (
+        <div className="bg-card tantra-border-strong p-8 text-center text-muted">Loading...</div>
+      ) : filteredSubs.length === 0 ? (
+        <div className="bg-card tantra-border-strong p-8 text-center text-muted">
+          {total === 0 ? "No subscribers yet. Click 'Import Numbers' to get started." : "No subscribers match these filters."}
+        </div>
+      ) : (
+        <div className="bg-card tantra-border-strong">
+          <div className="px-4 py-3 border-b border-[var(--border)] bg-deep flex items-center justify-between">
+            <span className="label">{filteredSubs.length} {filteredSubs.length === 1 ? "subscriber" : "subscribers"}</span>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {filteredSubs.map((s) => (
+              <div key={s.id} className="px-4 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-base font-bold text-default">{s.phone}</div>
+                  <div className="text-xs text-muted flex items-center gap-2 flex-wrap mt-0.5">
+                    <span className="inline-block px-1.5 py-0.5 bg-surface border border-[var(--border)] uppercase tracking-wider text-[10px]">
+                      {s.source.replace("_", " ")}
+                    </span>
+                    <span>added {new Date(s.created_at).toLocaleDateString()}</span>
+                    {s.last_messaged_at && (
+                      <span>· last msg {new Date(s.last_messaged_at).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleToggleOptIn(s)}
+                  className={`px-3 py-1.5 text-xs font-bold tracking-wider border transition ${
+                    s.opted_in
+                      ? "bg-green-500/10 border-green-500 text-green-500 hover:bg-green-500/20"
+                      : "bg-transparent border-[var(--border)] text-subtle hover:border-yellow-500 hover:text-yellow-500"
+                  }`}
+                  title={s.opted_in ? "Click to opt out" : "Click to opt in"}
+                >
+                  {s.opted_in ? "✓ OPTED IN" : "OPTED OUT"}
+                </button>
+                <button
+                  onClick={() => handleDelete(s)}
+                  className="w-9 h-9 flex items-center justify-center bg-transparent border border-[var(--border)] text-muted hover:border-tantra-red hover:text-tantra-red transition"
+                  title="Remove from list"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
