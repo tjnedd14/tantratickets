@@ -1347,7 +1347,7 @@ function EditModal({ reservation, onClose, onSaved, password }: any) {
               <div className="display-text text-3xl text-tantra-red leading-none">{groupSize}</div>
               <div className="label mt-1">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
             </div>
-            <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
+            <button type="button" onClick={() => setGroupSize(Math.min(100, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
           </div>
         </div>
         <div><label className="label block mb-2">TABLE</label>
@@ -1670,7 +1670,7 @@ function IssueTab(props: any) {
                     <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
                     <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
                   </div>
-                  <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
+                  <button type="button" onClick={() => setGroupSize(Math.min(100, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
                 </div>
               </div>
               <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>

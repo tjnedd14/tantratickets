@@ -102,7 +102,7 @@ export async function PATCH(req: NextRequest) {
     if (!email || !isValidEmail(email)) {
       return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
     }
-    if (!Number.isInteger(group_size) || group_size < 1 || group_size > 50) {
+    if (!Number.isInteger(group_size) || group_size < 1 || group_size > 100) {
       return NextResponse.json(
         { error: "Party size must be between 1 and 50" },
         { status: 400 }
