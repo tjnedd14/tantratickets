@@ -19,6 +19,7 @@ import AnalyticsPanel from "@/components/AnalyticsPanel";
 import OpenBarAnalyticsPanel from "@/components/OpenBarAnalyticsPanel";
 import FloorPlanPicker from "@/components/FloorPlanPicker";
 import FloorPlanPickerMulti from "@/components/FloorPlanPickerMulti";
+import GuestSearchInput from "@/components/GuestSearchInput";
 
 const LOGO_WHITE = "https://i.imgur.com/xAQenGt.png";
 
@@ -1546,6 +1547,16 @@ function IssueTab(props: any) {
   }
   const bookedTables = new Set(bookedOnSameDate.keys());
 
+  // Build a map of tableId -> { guestName, groupSize } for label display
+  const bookedTableInfo = new Map<string, { tableId: string; guestName: string; groupSize?: number }>();
+  for (const [tableId, reg] of bookedOnSameDate.entries()) {
+    bookedTableInfo.set(tableId, {
+      tableId,
+      guestName: (reg && reg.full_name) || "Unknown",
+      groupSize: reg && reg.group_size,
+    });
+  }
+
   function handleConflict(tableId: string): boolean {
     const existing = bookedOnSameDate.get(tableId);
     const displayTable = tableId.startsWith("T3B") ? "T3" : tableId;
@@ -1633,8 +1644,20 @@ function IssueTab(props: any) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10">
             {/* LEFT COLUMN — guest info + details */}
             <div className="space-y-5">
-              <div><label className="label block mb-2">CLIENT NAME</label>
-                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="Full name" /></div>
+              <div><label className="label block mb-2">CLIENT NAME <span className="normal-case tracking-normal text-subtle text-[10px]">(start typing to find repeat guests)</span></label>
+                <GuestSearchInput
+                  registrations={registrations}
+                  value={fullName}
+                  onChange={setFullName}
+                  onSelectGuest={(g) => {
+                    setFullName(g.full_name);
+                    if (g.email && !email) setEmail(g.email);
+                    if (g.phone && (!phone || phone === "+297 ")) setPhone(g.phone);
+                    if (g.most_common_group_size && groupSize === 1) setGroupSize(g.most_common_group_size);
+                  }}
+                  className="tantra-input w-full px-4 py-3.5"
+                  placeholder="Full name"
+                /></div>
               <div><label className="label block mb-2">EMAIL</label>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="tantra-input w-full px-4 py-3.5" placeholder="client@example.com" /></div>
               <div><label className="label block mb-2">PHONE</label>
@@ -1673,6 +1696,7 @@ function IssueTab(props: any) {
                   value={tableNumber}
                   onChange={setTableNumber}
                   bookedTables={bookedTables}
+                  bookedTableInfo={bookedTableInfo}
                   onConflict={handleConflict}
                   groupSize={groupSize}
                 />

@@ -3,11 +3,19 @@
 import { useState } from "react";
 import FloorPlanPicker from "./FloorPlanPicker";
 
+type BookedTableInfo = {
+  tableId: string;
+  guestName: string;
+  groupSize?: number;
+};
+
 type Props = {
   /** Current value as stored in DB: "V2" or "V2+V3" or "" */
   value: string;
   onChange: (val: string) => void;
   bookedTables: Set<string>;
+  /** Detailed info about each booked table for guest preview labels */
+  bookedTableInfo?: Map<string, BookedTableInfo>;
   onConflict?: (tableId: string) => boolean;
   /** When > 6, multi-table mode is auto-enabled with a hint */
   groupSize?: number;
@@ -21,7 +29,7 @@ type Props = {
  *
  * Stored format: "V2" (single) or "V2+V3" (multiple, joined by +)
  */
-export default function FloorPlanPickerMulti({ value, onChange, bookedTables, onConflict, groupSize = 1 }: Props) {
+export default function FloorPlanPickerMulti({ value, onChange, bookedTables, bookedTableInfo, onConflict, groupSize = 1 }: Props) {
   // Auto-enable multi-mode when party size > 6, but allow user to manually toggle on too
   const [manualMulti, setManualMulti] = useState(false);
   const autoMulti = (groupSize || 1) > 6;
@@ -96,6 +104,34 @@ export default function FloorPlanPickerMulti({ value, onChange, bookedTables, on
         bookedTables={bookedTables}
         onConflict={onConflict}
       />
+
+      {/* Booked tables guide for selected date — shows who has each booked table */}
+      {bookedTableInfo && bookedTableInfo.size > 0 && (
+        <div className="bg-deep tantra-border p-3">
+          <div className="label text-xs mb-2 text-muted">BOOKED FOR THIS DATE ({bookedTableInfo.size})</div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+            {Array.from(bookedTableInfo.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([tableId, info]) => (
+                <div
+                  key={tableId}
+                  className="flex items-center gap-2 bg-card border border-[var(--border)] px-2 py-1.5 text-xs"
+                  title={`${info.guestName} · ${info.groupSize || 0} guests`}
+                >
+                  <span className="inline-block bg-tantra-red/20 border border-tantra-red text-tantra-red font-bold px-1.5 py-0.5 text-[10px] tracking-wider flex-shrink-0">
+                    {tableId.startsWith("T3B") ? "T3" : tableId}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-default truncate font-semibold">{info.guestName}</div>
+                    {info.groupSize !== undefined && (
+                      <div className="text-subtle text-[10px] leading-tight">· {info.groupSize}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Selected tables summary (shown when multi-mode active OR multiple tables picked) */}
       {(multiMode || selectedTables.length > 1) && selectedTables.length > 0 && (
