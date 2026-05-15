@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   isValidEmail,
   isValidPhone,
@@ -523,30 +523,12 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="flex gap-8 mb-8 border-b border-[var(--border)] overflow-x-auto">
-            <TabButton active={tab === "issue"} onClick={() => setTab("issue")}>New Reservation</TabButton>
-            <TabButton active={tab === "list"} onClick={() => setTab("list")}>
-              Guest List<span className="ml-2 text-tantra-red">({registrations.length})</span>
-            </TabButton>
-            <TabButton active={tab === "openbar"} onClick={() => setTab("openbar")}>
-              Open Bar<span className="ml-2 text-tantra-red">({openBarSignups.length})</span>
-            </TabButton>
-            <TabButton active={tab === "reminders"} onClick={() => setTab("reminders")}>
-              Email Blast
-            </TabButton>
-            <TabButton active={tab === "autopass"} onClick={() => setTab("autopass")}>
-              🎫 Auto-Pass
-            </TabButton>
-            <TabButton active={tab === "issuepass"} onClick={() => setTab("issuepass")}>
-              🎁 Issue Pass
-            </TabButton>
-            <TabButton active={tab === "subscribers"} onClick={() => setTab("subscribers")}>
-              📱 Subscribers
-            </TabButton>
-            <TabButton active={tab === "birthdays"} onClick={() => setTab("birthdays")}>
-              🎂 Birthdays
-            </TabButton>
-          </div>
+          <TabMenu
+            tab={tab}
+            onChange={setTab}
+            registrationsCount={registrations.length}
+            openBarCount={openBarSignups.length}
+          />
 
           {tab === "issue" && (
             <IssueTab
@@ -3756,6 +3738,119 @@ function BirthdaysTab({ password, signups }: { password: string; signups: OpenBa
       {uniqueMatches.length > 0 && (
         <div className="bg-tantra-red/10 border border-tantra-red/40 px-4 py-3 text-sm text-default">
           💡 <strong>Pro tip:</strong> Use the <span className="font-bold">Email Blast</span> tab and turn on the <span className="font-mono bg-card px-1.5 py-0.5">🎂 Birthday Window</span> filter to send personalized birthday offers to these guests.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabMenu({ tab, onChange, registrationsCount, openBarCount }: {
+  tab: Tab;
+  onChange: (t: Tab) => void;
+  registrationsCount: number;
+  openBarCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  type TabEntry = { id: Tab; label: string; emoji?: string; badge?: number };
+  const allTabs: TabEntry[] = [
+    { id: "issue", label: "New Reservation", emoji: "📝" },
+    { id: "list", label: "Guest List", emoji: "👥", badge: registrationsCount },
+    { id: "openbar", label: "Open Bar", emoji: "🍾", badge: openBarCount },
+    { id: "reminders", label: "Email Blast", emoji: "📧" },
+    { id: "autopass", label: "Auto-Pass", emoji: "🎫" },
+    { id: "issuepass", label: "Issue Pass", emoji: "🎁" },
+    { id: "subscribers", label: "Subscribers", emoji: "📱" },
+    { id: "birthdays", label: "Birthdays", emoji: "🎂" },
+  ];
+
+  const current = allTabs.find((t) => t.id === tab) || allTabs[0];
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  function handlePick(t: Tab) {
+    onChange(t);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative mb-8">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 bg-card tantra-border-strong text-default hover:border-tantra-red transition"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xl flex-shrink-0">{current.emoji}</span>
+          <div className="text-left min-w-0">
+            <div className="text-[10px] uppercase tracking-widest text-subtle leading-none mb-0.5">CURRENT TAB</div>
+            <div className="display-text text-base text-default truncate flex items-center gap-2">
+              {current.label}
+              {current.badge !== undefined && (
+                <span className="text-tantra-red text-sm">({current.badge})</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <span className="text-xs text-muted hidden sm:inline">{open ? "Close" : "Switch tab"}</span>
+          {/* Hamburger icon */}
+          <svg className={`w-6 h-6 text-default transition-transform ${open ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </div>
+      </button>
+
+      {/* Dropdown menu */}
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-card tantra-border-strong shadow-2xl overflow-hidden" role="menu">
+          {allTabs.map((t) => {
+            const isActive = t.id === tab;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handlePick(t.id)}
+                role="menuitem"
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-left border-b border-[var(--border)] last:border-b-0 transition ${
+                  isActive
+                    ? "bg-tantra-red/10 text-tantra-red"
+                    : "hover:bg-surface text-default"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">{t.emoji}</span>
+                  <span className="text-sm font-bold tracking-wide">{t.label}</span>
+                  {t.badge !== undefined && (
+                    <span className={`text-xs font-bold ${isActive ? "text-tantra-red" : "text-tantra-red"}`}>({t.badge})</span>
+                  )}
+                </div>
+                {isActive && (
+                  <svg className="w-4 h-4 text-tantra-red" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
