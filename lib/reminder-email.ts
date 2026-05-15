@@ -243,7 +243,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
       attachments.push({
         filename: "qrcode.png",
         content: base64Payload,
-        content_id: "qrcode",
+        cid: "qrcode",
       });
     }
   }
