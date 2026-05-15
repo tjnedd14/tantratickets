@@ -65,7 +65,7 @@ type OpenBarSignup = {
   created_at: string;
 };
 
-type Tab = "issue" | "list" | "openbar" | "reminders" | "autopass" | "issuepass" | "subscribers";
+type Tab = "issue" | "list" | "openbar" | "reminders" | "autopass" | "issuepass" | "subscribers" | "birthdays";
 type CheckInFilter = "all" | "pending" | "checked_in";
 type GenderFilter = "all" | "male" | "female";
 type DateFilterMode = "specific" | "all" | "upcoming";
@@ -543,6 +543,9 @@ export default function AdminPage() {
             <TabButton active={tab === "subscribers"} onClick={() => setTab("subscribers")}>
               📱 Subscribers
             </TabButton>
+            <TabButton active={tab === "birthdays"} onClick={() => setTab("birthdays")}>
+              🎂 Birthdays
+            </TabButton>
           </div>
 
           {tab === "issue" && (
@@ -750,6 +753,10 @@ export default function AdminPage() {
 
           {tab === "subscribers" && (
             <SubscribersTab password={password} />
+          )}
+
+          {tab === "birthdays" && (
+            <BirthdaysTab password={password} signups={openBarSignups} />
           )}
         </div>
       </div>
@@ -1082,6 +1089,14 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
                     <div className="flex items-center gap-2">
                       <VipStar isVip={s.is_vip} onToggle={() => onToggleVip(s.id, s.is_vip)} />
                       <span className="font-semibold text-default">{s.full_name}</span>
+                      {isBirthdaySoon(s.date_of_birth, 30) && (
+                        <span
+                          className="text-base"
+                          title={`Birthday in ${daysUntilBirthday(s.date_of_birth)} day${daysUntilBirthday(s.date_of_birth) === 1 ? "" : "s"}`}
+                        >
+                          🎂
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-2 py-3.5 text-center">
@@ -1155,6 +1170,14 @@ function OpenBarTable({ signups, totalSignups, checkingIn, onToggleCheckIn, onDe
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-bold text-default text-base">{s.full_name}</span>
+                    {isBirthdaySoon(s.date_of_birth, 30) && (
+                      <span
+                        className="text-lg"
+                        title={`Birthday in ${daysUntilBirthday(s.date_of_birth)} day${daysUntilBirthday(s.date_of_birth) === 1 ? "" : "s"}`}
+                      >
+                        🎂
+                      </span>
+                    )}
                     {s.gender === "male" && <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 font-bold text-xs" title="Male">♂</span>}
                     {s.gender === "female" && <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-pink-500/20 text-pink-400 font-bold text-xs" title="Female">♀</span>}
                     <span className="text-xs text-muted">· {age}</span>
@@ -1232,6 +1255,52 @@ function calculateAgeYears(dob: string): number {
   const m = now.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
   return age;
+}
+
+/**
+ * Returns the date of the next occurrence of this person's birthday (could be this year or next).
+ * Returns null if dob is invalid OR is the placeholder "1990-01-01" (used for admin-issued passes).
+ */
+function getNextBirthday(dob: string | null | undefined): Date | null {
+  if (!dob) return null;
+  if (dob === "1990-01-01") return null; // placeholder for admin-issued passes
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const candidate = new Date(thisYear, d.getMonth(), d.getDate());
+  // If birthday has already passed this year, return next year's birthday
+  // Use start-of-today comparison (clear hours so today still counts as upcoming)
+  const todayStart = new Date(thisYear, now.getMonth(), now.getDate());
+  if (candidate < todayStart) {
+    return new Date(thisYear + 1, d.getMonth(), d.getDate());
+  }
+  return candidate;
+}
+
+/** Days from today to next birthday. 0 = today. */
+function daysUntilBirthday(dob: string | null | undefined): number | null {
+  const next = getNextBirthday(dob);
+  if (!next) return null;
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((next.getTime() - todayStart.getTime()) / 86400000);
+}
+
+/** True if birthday falls within the next N days (inclusive of today). */
+function isBirthdaySoon(dob: string | null | undefined, withinDays: number = 30): boolean {
+  const d = daysUntilBirthday(dob);
+  if (d === null) return false;
+  return d >= 0 && d <= withinDays;
+}
+
+/** Get age the person will turn on their next birthday. */
+function ageOnNextBirthday(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  if (dob === "1990-01-01") return null;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  return calculateAgeYears(dob) + (daysUntilBirthday(dob) === 0 ? 0 : 1);
 }
 
 function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
@@ -1347,7 +1416,7 @@ function EditModal({ reservation, onClose, onSaved, password }: any) {
               <div className="display-text text-3xl text-tantra-red leading-none">{groupSize}</div>
               <div className="label mt-1">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
             </div>
-            <button type="button" onClick={() => setGroupSize(Math.min(100, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
+            <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
           </div>
         </div>
         <div><label className="label block mb-2">TABLE</label>
@@ -1670,7 +1739,7 @@ function IssueTab(props: any) {
                     <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
                     <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
                   </div>
-                  <button type="button" onClick={() => setGroupSize(Math.min(100, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
+                  <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
                 </div>
               </div>
               <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
@@ -1727,6 +1796,7 @@ function RemindersTab({ password }: { password: string }) {
     table_number?: string | null;
     gender?: "male" | "female" | null;
     is_vip?: boolean;
+    date_of_birth?: string | null;
   };
 
   // Mode toggle: "all" loads everyone, "date" loads only guests for a specific date
@@ -1743,6 +1813,8 @@ function RemindersTab({ password }: { password: string }) {
   const [searchFilter, setSearchFilter] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [vipFilter, setVipFilter] = useState(false);
+  const [birthdayFilter, setBirthdayFilter] = useState<"off" | "today" | "week" | "month" | "custom">("off");
+  const [birthdayCustomDays, setBirthdayCustomDays] = useState<number>(30);
 
   const [customSubject, setCustomSubject] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>(["", "", ""]);
@@ -1881,10 +1953,20 @@ function RemindersTab({ password }: { password: string }) {
     if (!vipFilter) return true;
     return Boolean(r.is_vip);
   }
+  function matchesBirthday(r: Recipient): boolean {
+    if (birthdayFilter === "off") return true;
+    const dob = r.date_of_birth;
+    if (!dob) return false;
+    if (birthdayFilter === "today") return daysUntilBirthday(dob) === 0;
+    if (birthdayFilter === "week") return isBirthdaySoon(dob, 7);
+    if (birthdayFilter === "month") return isBirthdaySoon(dob, 30);
+    if (birthdayFilter === "custom") return isBirthdaySoon(dob, birthdayCustomDays);
+    return true;
+  }
 
-  const filteredOpenbar = openbarRecipients.filter((r) => matchesSearch(r) && matchesGender(r) && matchesVip(r));
-  // Reservations have no gender data — when a gender filter is active, exclude them entirely.
-  const filteredReservations = genderFilter !== "all"
+  const filteredOpenbar = openbarRecipients.filter((r) => matchesSearch(r) && matchesGender(r) && matchesVip(r) && matchesBirthday(r));
+  // Reservations have no gender data or DOB — when a gender/birthday filter is active, exclude them entirely.
+  const filteredReservations = (genderFilter !== "all" || birthdayFilter !== "off")
     ? []
     : reservationRecipients.filter((r) => matchesSearch(r) && matchesVip(r));
 
@@ -1974,10 +2056,47 @@ function RemindersTab({ password }: { password: string }) {
                   <FilterPill active={vipFilter} onClick={() => setVipFilter(!vipFilter)} label={`⭐ VIP Only (${[...openbarRecipients, ...reservationRecipients].filter((r) => r.is_vip).length})`} />
                 </div>
 
+                {/* Birthday window filter */}
+                <div className="bg-deep border border-[var(--border)] p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="label text-xs">🎂 BIRTHDAY WINDOW</div>
+                    <div className="text-xs text-muted">
+                      {birthdayFilter === "off" && "Showing all guests"}
+                      {birthdayFilter === "today" && `${openbarRecipients.filter((r) => daysUntilBirthday(r.date_of_birth) === 0).length} birthdays today`}
+                      {birthdayFilter === "week" && `${openbarRecipients.filter((r) => isBirthdaySoon(r.date_of_birth, 7)).length} birthdays this week`}
+                      {birthdayFilter === "month" && `${openbarRecipients.filter((r) => isBirthdaySoon(r.date_of_birth, 30)).length} birthdays this month`}
+                      {birthdayFilter === "custom" && `${openbarRecipients.filter((r) => isBirthdaySoon(r.date_of_birth, birthdayCustomDays)).length} birthdays in ${birthdayCustomDays} days`}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterPill active={birthdayFilter === "off"} onClick={() => setBirthdayFilter("off")} label="Off" />
+                    <FilterPill active={birthdayFilter === "today"} onClick={() => setBirthdayFilter("today")} label="🎂 Today" />
+                    <FilterPill active={birthdayFilter === "week"} onClick={() => setBirthdayFilter("week")} label="🎂 This Week (7d)" />
+                    <FilterPill active={birthdayFilter === "month"} onClick={() => setBirthdayFilter("month")} label="🎂 This Month (30d)" />
+                    <FilterPill active={birthdayFilter === "custom"} onClick={() => setBirthdayFilter("custom")} label="🎂 Custom" />
+                    {birthdayFilter === "custom" && (
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={birthdayCustomDays}
+                        onChange={(e) => setBirthdayCustomDays(Math.max(1, Math.min(365, Number(e.target.value) || 30)))}
+                        className="tantra-input w-20 px-2 py-1 text-xs"
+                        title="Days from today"
+                      />
+                    )}
+                  </div>
+                </div>
+
                 {/* Filter active warning */}
                 {genderFilter !== "all" && (
                   <div className="bg-yellow-500/10 border border-yellow-500/40 text-yellow-500 text-xs px-4 py-2.5">
                     ℹ Reservations are hidden — they don't have gender data. Only Open Bar guests will appear below.
+                  </div>
+                )}
+                {birthdayFilter !== "off" && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/40 text-yellow-500 text-xs px-4 py-2.5">
+                    🎂 Reservations are hidden — they don't have birthday data. Only Open Bar guests with matching birthdays appear below.
                   </div>
                 )}
 
@@ -3471,4 +3590,174 @@ function looksLikePhone(s: string): boolean {
   const slashes = (trimmed.match(/\//g) || []).length;
   if (slashes >= 2) return false;
   return true;
+}
+
+function BirthdaysTab({ password, signups }: { password: string; signups: OpenBarSignup[] }) {
+  const [windowMode, setWindowMode] = useState<"week" | "month" | "year" | "custom">("month");
+  const [customDays, setCustomDays] = useState<number>(30);
+  const [search, setSearch] = useState("");
+
+  const windowDays = (() => {
+    if (windowMode === "week") return 7;
+    if (windowMode === "month") return 30;
+    if (windowMode === "year") return 365;
+    return Math.max(1, Math.min(365, customDays || 30));
+  })();
+
+  // Filter + sort by upcoming birthday
+  const q = search.trim().toLowerCase();
+  const matches = signups
+    .filter((s) => {
+      if (!s.date_of_birth) return false;
+      if (!isBirthdaySoon(s.date_of_birth, windowDays)) return false;
+      if (q && !s.full_name.toLowerCase().includes(q) && !s.email.toLowerCase().includes(q)) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const da = daysUntilBirthday(a.date_of_birth) ?? 999;
+      const db_ = daysUntilBirthday(b.date_of_birth) ?? 999;
+      return da - db_;
+    });
+
+  // Dedupe by email (the same guest could have signed up for multiple events)
+  const seen = new Set<string>();
+  const uniqueMatches = matches.filter((s) => {
+    const key = (s.email || "").toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  function fmtDate(dob: string): string {
+    const d = new Date(dob);
+    return d.toLocaleDateString([], { month: "long", day: "numeric" });
+  }
+
+  function fmtDays(n: number | null): string {
+    if (n === null) return "—";
+    if (n === 0) return "TODAY 🎉";
+    if (n === 1) return "tomorrow";
+    if (n < 7) return `in ${n} days`;
+    if (n < 30) return `in ${Math.floor(n / 7)} week${Math.floor(n / 7) === 1 ? "" : "s"}`;
+    return `in ${n} days`;
+  }
+
+  // Group counts for stat cards
+  const todayCount = signups.filter((s) => daysUntilBirthday(s.date_of_birth) === 0).length;
+  const weekCount = signups.filter((s) => isBirthdaySoon(s.date_of_birth, 7)).length;
+  const monthCount = signups.filter((s) => isBirthdaySoon(s.date_of_birth, 30)).length;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 mb-3">
+        <span className="accent-line"></span>
+        <span className="label">BIRTHDAYS</span>
+      </div>
+      <div>
+        <h2 className="display-text text-3xl text-default">🎂 Upcoming Birthdays</h2>
+        <p className="text-muted text-sm mt-1">
+          Birthdays of Open Bar pass-holders. Use Email Blast → 🎂 Birthday Window to send them personalized invites.
+        </p>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">TODAY 🎉</div>
+          <div className="display-text text-3xl text-tantra-red">{todayCount}</div>
+        </div>
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">THIS WEEK</div>
+          <div className="display-text text-3xl text-default">{weekCount}</div>
+        </div>
+        <div className="bg-card tantra-border p-4">
+          <div className="label text-xs">THIS MONTH</div>
+          <div className="display-text text-3xl text-default">{monthCount}</div>
+        </div>
+      </div>
+
+      {/* Window selector */}
+      <div className="bg-card tantra-border-strong p-4 space-y-3">
+        <div className="label text-xs">WINDOW</div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <FilterPill active={windowMode === "week"} onClick={() => setWindowMode("week")} label="7 Days" />
+          <FilterPill active={windowMode === "month"} onClick={() => setWindowMode("month")} label="30 Days" />
+          <FilterPill active={windowMode === "year"} onClick={() => setWindowMode("year")} label="All Year" />
+          <FilterPill active={windowMode === "custom"} onClick={() => setWindowMode("custom")} label="Custom" />
+          {windowMode === "custom" && (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={customDays}
+                onChange={(e) => setCustomDays(Math.max(1, Math.min(365, Number(e.target.value) || 30)))}
+                className="tantra-input w-24 px-2 py-1.5 text-sm"
+              />
+              <span className="text-xs text-muted">days</span>
+            </div>
+          )}
+        </div>
+
+        {/* Search */}
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by name or email..."
+          className="tantra-input w-full px-4 py-2.5 text-sm"
+        />
+      </div>
+
+      {/* Results */}
+      {uniqueMatches.length === 0 ? (
+        <div className="bg-card tantra-border-strong p-8 text-center text-muted">
+          {signups.filter((s) => s.date_of_birth && s.date_of_birth !== "1990-01-01").length === 0
+            ? "No guests have birthday data yet. Public Open Bar signups will populate this list."
+            : "No birthdays in this window."}
+        </div>
+      ) : (
+        <div className="bg-card tantra-border-strong">
+          <div className="px-4 py-3 border-b border-[var(--border)] bg-deep flex items-center justify-between">
+            <span className="label">
+              {uniqueMatches.length} {uniqueMatches.length === 1 ? "birthday" : "birthdays"} in next {windowDays} days
+            </span>
+          </div>
+          <div className="divide-y divide-[var(--border)]">
+            {uniqueMatches.map((s) => {
+              const days = daysUntilBirthday(s.date_of_birth);
+              const isToday = days === 0;
+              const turningAge = ageOnNextBirthday(s.date_of_birth);
+              return (
+                <div key={s.id} className={`px-4 py-3 flex items-center gap-3 ${isToday ? "bg-tantra-red/10" : ""}`}>
+                  <div className="text-2xl">🎂</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-default">{s.full_name}</span>
+                      {s.is_vip && <span className="text-yellow-500" title="VIP">⭐</span>}
+                      {turningAge !== null && (
+                        <span className="text-xs text-muted">turning {turningAge}</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted truncate">{s.email}{s.phone && ` · ${s.phone}`}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className={`text-sm font-bold ${isToday ? "text-tantra-red" : "text-default"}`}>{fmtDate(s.date_of_birth)}</div>
+                    <div className={`text-xs ${isToday ? "text-tantra-red font-bold" : "text-subtle"}`}>{fmtDays(days)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Helpful CTA */}
+      {uniqueMatches.length > 0 && (
+        <div className="bg-tantra-red/10 border border-tantra-red/40 px-4 py-3 text-sm text-default">
+          💡 <strong>Pro tip:</strong> Use the <span className="font-bold">Email Blast</span> tab and turn on the <span className="font-mono bg-card px-1.5 py-0.5">🎂 Birthday Window</span> filter to send personalized birthday offers to these guests.
+        </div>
+      )}
+    </div>
+  );
 }

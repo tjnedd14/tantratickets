@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     // Build Open Bar query
     let openBarQuery = supabase
       .from("open_bar_signups")
-      .select("id, full_name, email, ticket_code, gender, is_vip, checked_in, event_datetime")
+      .select("id, full_name, email, ticket_code, gender, is_vip, checked_in, event_datetime, date_of_birth")
       .order("full_name", { ascending: true });
 
     if (useDateFilter) {
@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
       is_vip: r.is_vip,
       checked_in: r.checked_in,
       event_datetime: r.event_datetime,
+      date_of_birth: r.date_of_birth,
     }));
 
     // Build reservations query
