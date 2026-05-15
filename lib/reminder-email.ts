@@ -167,7 +167,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
           <!-- Logo header -->
           <tr>
             <td align="center" style="padding: 40px 30px 20px;">
-              <img src="${LOGO_URL}" alt="Tantra" style="height:60px; width:auto; display:inline-block;" />
+              <img src="${LOGO_URL}" alt="Tantra" style="height:110px; width:auto; display:inline-block;" />
             </td>
           </tr>
 

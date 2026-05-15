@@ -1285,6 +1285,75 @@ function ageOnNextBirthday(dob: string | null | undefined): number | null {
   return calculateAgeYears(dob) + (daysUntilBirthday(dob) === 0 ? 0 : 1);
 }
 
+/**
+ * Get the date of the next upcoming Friday or Saturday, whichever is closer.
+ * If today IS already Fri/Sat (and it's before 9pm), returns today.
+ */
+function nextFriOrSat(): Date {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun, 5=Fri, 6=Sat
+  const hour = d.getHours();
+  // If today is Fri or Sat and it's before 9pm, use today
+  if ((day === 5 || day === 6) && hour < 21) {
+    return d;
+  }
+  // Otherwise find the next Fri/Sat
+  let daysAhead = 1;
+  while (daysAhead <= 7) {
+    const candidate = new Date(d);
+    candidate.setDate(d.getDate() + daysAhead);
+    const cDay = candidate.getDay();
+    if (cDay === 5 || cDay === 6) return candidate;
+    daysAhead++;
+  }
+  return d; // fallback (won't hit)
+}
+
+/** Get next-occurring Friday from now (always returns a future Friday at 9pm). */
+function nextFriday(): Date {
+  const d = new Date();
+  const day = d.getDay();
+  const daysUntilFri = (5 - day + 7) % 7 || 7;
+  d.setDate(d.getDate() + daysUntilFri);
+  return d;
+}
+
+/** Get next-occurring Saturday. */
+function nextSaturday(): Date {
+  const d = new Date();
+  const day = d.getDay();
+  const daysUntilSat = (6 - day + 7) % 7 || 7;
+  d.setDate(d.getDate() + daysUntilSat);
+  return d;
+}
+
+/** Format a Date as YYYY-MM-DDTHH:MM at 9:00 PM. */
+function formatDtAt9pm(d: Date): string {
+  const date = new Date(d);
+  date.setHours(21, 0, 0, 0);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T21:00`;
+}
+
+/** True if date is Fri or Sat. */
+function isFriOrSat(dateString: string): boolean {
+  if (!dateString) return false;
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return false;
+  const day = d.getDay();
+  return day === 5 || day === 6;
+}
+
+/** Get day name. */
+function getDayName(dateString: string): string {
+  if (!dateString) return "";
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString([], { weekday: "long" });
+}
+
 function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
   if (checkedIn) {
     const checkedDate = checkedInAt ? new Date(checkedInAt) : null;
@@ -2322,20 +2391,7 @@ function AutoPassTab({ password }: { password: string }) {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [vipFilter, setVipFilter] = useState(false);
 
-  const [newEventDatetime, setNewEventDatetime] = useState<string>(() => {
-    // Default: next Saturday at 9pm
-    const d = new Date();
-    const day = d.getDay();
-    const daysUntilSat = (6 - day + 7) % 7 || 7;
-    d.setDate(d.getDate() + daysUntilSat);
-    d.setHours(21, 0, 0, 0);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mn = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}T${hh}:${mn}`;
-  });
+  const [newEventDatetime, setNewEventDatetime] = useState<string>(() => formatDtAt9pm(nextFriOrSat()));
 
   const [subject, setSubject] = useState("🎉 You're invited back — your VIP pass is ready");
   const [message, setMessage] = useState("Great news — we have another Open Bar event coming up and you're invited back. Your new pass is below. Just show up at the door, no need to sign up again. See you there!");
@@ -2476,9 +2532,41 @@ function AutoPassTab({ password }: { password: string }) {
             type="datetime-local"
             value={newEventDatetime}
             onChange={(e) => setNewEventDatetime(e.target.value)}
-            className="tantra-input w-full px-4 py-3 text-lg font-bold"
+            className={`tantra-input w-full px-4 py-3 text-lg font-bold ${
+              newEventDatetime && !isFriOrSat(newEventDatetime) ? "border-tantra-red" : ""
+            }`}
           />
-          <p className="text-xs text-subtle mt-2">All new passes will be valid for this date.</p>
+          {newEventDatetime && (
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              {isFriOrSat(newEventDatetime) ? (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-green-500">
+                  ✓ {getDayName(newEventDatetime)} — valid Open Bar night
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-tantra-red">
+                  ✗ {getDayName(newEventDatetime)} is not an Open Bar night (Friday & Saturday only)
+                </span>
+              )}
+            </div>
+          )}
+          {/* Quick-pick chips */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setNewEventDatetime(formatDtAt9pm(nextFriday()))}
+              className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+            >
+              📅 Next Friday
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewEventDatetime(formatDtAt9pm(nextSaturday()))}
+              className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+            >
+              📅 Next Saturday
+            </button>
+          </div>
+          <p className="text-xs text-subtle mt-2">Open Bar runs Fridays & Saturdays only. All new passes will be valid for this date.</p>
         </div>
 
         {/* Load recipients */}
@@ -2683,7 +2771,7 @@ function AutoPassTab({ password }: { password: string }) {
           <button
             type="button"
             onClick={() => setShowConfirm(true)}
-            disabled={sendLoading || !loaded || totalSelected === 0 || !subject.trim() || !newEventDatetime}
+            disabled={sendLoading || !loaded || totalSelected === 0 || !subject.trim() || !newEventDatetime || !isFriOrSat(newEventDatetime)}
             className="btn-red w-full py-4 text-sm"
           >
             {sendLoading
@@ -2694,6 +2782,8 @@ function AutoPassTab({ password }: { password: string }) {
               ? "SELECT AT LEAST ONE RECIPIENT"
               : !subject.trim()
               ? "SUBJECT REQUIRED"
+              : !isFriOrSat(newEventDatetime)
+              ? "PICK A FRIDAY OR SATURDAY"
               : `🎫 BLAST ${totalSelected} NEW PASSES`}
           </button>
         )}
@@ -2713,20 +2803,7 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
   // Bulk mode
   const [bulkText, setBulkText] = useState("");
 
-  const [eventDatetime, setEventDatetime] = useState<string>(() => {
-    // Default: next Saturday at 9pm
-    const d = new Date();
-    const day = d.getDay();
-    const daysUntilSat = (6 - day + 7) % 7 || 7;
-    d.setDate(d.getDate() + daysUntilSat);
-    d.setHours(21, 0, 0, 0);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mn = String(d.getMinutes()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}T${hh}:${mn}`;
-  });
+  const [eventDatetime, setEventDatetime] = useState<string>(() => formatDtAt9pm(nextFriOrSat()));
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -2858,10 +2935,41 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
               type="datetime-local"
               value={eventDatetime}
               onChange={(e) => setEventDatetime(e.target.value)}
-              className="tantra-input w-full px-4 py-3 text-base font-bold"
+              className={`tantra-input w-full px-4 py-3 text-base font-bold ${
+                eventDatetime && !isFriOrSat(eventDatetime) ? "border-tantra-red" : ""
+              }`}
               required
             />
-            <p className="text-xs text-subtle mt-1">All passes will be valid for this date.</p>
+            {eventDatetime && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                {isFriOrSat(eventDatetime) ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-green-500">
+                    ✓ {getDayName(eventDatetime)} — valid Open Bar night
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-tantra-red">
+                    ✗ {getDayName(eventDatetime)} is not an Open Bar night (Friday & Saturday only)
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setEventDatetime(formatDtAt9pm(nextFriday()))}
+                className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+              >
+                📅 Next Friday
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventDatetime(formatDtAt9pm(nextSaturday()))}
+                className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+              >
+                📅 Next Saturday
+              </button>
+            </div>
+            <p className="text-xs text-subtle mt-2">Open Bar runs Fridays & Saturdays only.</p>
           </div>
 
           {mode === "single" ? (
@@ -2953,9 +3061,15 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
             </div>
           )}
 
-          <button type="submit" disabled={loading} className="btn-red w-full py-4 text-sm">
+          <button
+            type="submit"
+            disabled={loading || !isFriOrSat(eventDatetime)}
+            className="btn-red w-full py-4 text-sm"
+          >
             {loading
               ? "GENERATING…"
+              : !isFriOrSat(eventDatetime)
+              ? "PICK A FRIDAY OR SATURDAY"
               : mode === "single"
               ? "🎁 GENERATE PASS"
               : `🎁 GENERATE ${bulkPreview.length} PASSES`}
