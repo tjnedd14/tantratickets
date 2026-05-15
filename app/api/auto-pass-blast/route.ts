@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
 import { sendReminderEmail } from "@/lib/reminder-email";
 import { generateOpenBarCode } from "@/lib/utils";
+import QRCode from "qrcode";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -172,6 +173,17 @@ export async function POST(req: NextRequest) {
 
     for (const r of recipients) {
       try {
+        // Generate inline QR data URL for Open Bar passes
+        let qrDataUrl: string | undefined;
+        if (r.isOpenBar) {
+          qrDataUrl = await QRCode.toDataURL(r.newCode, {
+            width: 300,
+            margin: 2,
+            color: { dark: "#000000", light: "#FFFFFF" },
+            errorCorrectionLevel: "M",
+          });
+        }
+
         await sendReminderEmail({
           to: r.email,
           fullName: r.fullName,
@@ -185,6 +197,8 @@ export async function POST(req: NextRequest) {
           imageUrls: cleanImages,
           customMessage: message?.trim(),
           customSubject: finalSubject,
+          showPassInPromo: true,
+          qrDataUrl,
         });
         sent++;
       } catch (err: any) {

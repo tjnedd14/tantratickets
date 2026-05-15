@@ -19,6 +19,10 @@ type SendBlastParams = {
   customSubject?: string;
   /** Optional headline override for the email body (defaults to customSubject). */
   customHeadline?: string;
+  /** When true (used by auto-pass blast): show pass code + event date even in promo mode */
+  showPassInPromo?: boolean;
+  /** Optional QR code data URL (base64 PNG). When provided, renders an inline QR image below the pass code. */
+  qrDataUrl?: string;
 };
 
 export async function sendReminderEmail(params: SendBlastParams) {
@@ -90,8 +94,8 @@ export async function sendReminderEmail(params: SendBlastParams) {
       </tr>
     `;
 
-  // Pass/ticket card — only in reminder mode (promo emails don't reference tonight's ticket)
-  const ticketCardHtml = !isPromoMode && params.ticketCode
+  // Pass/ticket card — show in reminder mode OR when showPassInPromo is true (auto-pass blast)
+  const ticketCardHtml = (params.ticketCode && (!isPromoMode || params.showPassInPromo))
     ? `
       <tr>
         <td style="padding: 20px 30px 10px;">
@@ -104,7 +108,12 @@ export async function sendReminderEmail(params: SendBlastParams) {
                 <div style="font-family:'Courier New', monospace; font-size:22px; font-weight:bold; color:#fff; letter-spacing:3px;">
                   ${params.ticketCode}
                 </div>
-                <div style="font-size:11px; color:#888; margin-top:10px;">Show this at the door</div>
+                ${params.qrDataUrl ? `
+                  <div style="margin: 16px auto 4px; background:#fff; padding: 10px; display: inline-block; line-height: 0;">
+                    <img src="${params.qrDataUrl}" alt="QR Code" width="200" height="200" style="display:block; width:200px; height:200px;" />
+                  </div>
+                ` : ""}
+                <div style="font-size:11px; color:#888; margin-top:10px;">${params.qrDataUrl ? "Scan this QR at the door" : "Show this at the door"}</div>
               </td>
             </tr>
           </table>
@@ -113,8 +122,8 @@ export async function sendReminderEmail(params: SendBlastParams) {
     `
     : "";
 
-  // Event details — only in reminder mode
-  const detailsHtml = isPromoMode ? "" : `
+  // Event details — show in reminder mode OR when showPassInPromo is true
+  const detailsHtml = (!isPromoMode || params.showPassInPromo) ? `
     <tr>
       <td style="padding: 20px 30px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #2a2a2a; padding-top:20px;">
@@ -140,7 +149,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
         </table>
       </td>
     </tr>
-  `;
+  ` : "";
 
   const html = `
 <!DOCTYPE html>
