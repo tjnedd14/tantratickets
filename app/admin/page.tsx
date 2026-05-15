@@ -1327,6 +1327,37 @@ function nextSaturday(): Date {
   return d;
 }
 
+/**
+ * Get "this Friday" — the Friday of this week.
+ * Returns null if today is Sat or Sun (this Friday has already passed).
+ */
+function thisFriday(): Date | null {
+  const d = new Date();
+  const day = d.getDay();
+  // Sun = 0, Mon = 1 ... Fri = 5, Sat = 6
+  if (day === 6 || day === 0) return null; // already past Friday this week
+  if (day === 5) return d; // today is Friday
+  // Mon-Thu: this Friday is 5 - day days away
+  const daysUntilFri = 5 - day;
+  d.setDate(d.getDate() + daysUntilFri);
+  return d;
+}
+
+/**
+ * Get "this Saturday" — the Saturday of this week.
+ * Returns null if today is Sunday (this Saturday has already passed).
+ */
+function thisSaturday(): Date | null {
+  const d = new Date();
+  const day = d.getDay();
+  if (day === 0) return null; // Sunday → this Saturday passed yesterday
+  if (day === 6) return d; // today is Saturday
+  // Mon-Fri: this Saturday is 6 - day days away
+  const daysUntilSat = 6 - day;
+  d.setDate(d.getDate() + daysUntilSat);
+  return d;
+}
+
 /** Format a Date as YYYY-MM-DDTHH:MM at 9:00 PM. */
 function formatDtAt9pm(d: Date): string {
   const date = new Date(d);
@@ -2551,6 +2582,24 @@ function AutoPassTab({ password }: { password: string }) {
           )}
           {/* Quick-pick chips */}
           <div className="mt-3 flex flex-wrap gap-2">
+            {thisFriday() && (
+              <button
+                type="button"
+                onClick={() => setNewEventDatetime(formatDtAt9pm(thisFriday()!))}
+                className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
+              >
+                📅 {new Date().getDay() === 5 ? "Tonight (Fri)" : "This Friday"}
+              </button>
+            )}
+            {thisSaturday() && (
+              <button
+                type="button"
+                onClick={() => setNewEventDatetime(formatDtAt9pm(thisSaturday()!))}
+                className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
+              >
+                📅 {new Date().getDay() === 6 ? "Tonight (Sat)" : "This Saturday"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setNewEventDatetime(formatDtAt9pm(nextFriday()))}
@@ -2954,6 +3003,24 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
               </div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
+              {thisFriday() && (
+                <button
+                  type="button"
+                  onClick={() => setEventDatetime(formatDtAt9pm(thisFriday()!))}
+                  className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
+                >
+                  📅 {new Date().getDay() === 5 ? "Tonight (Fri)" : "This Friday"}
+                </button>
+              )}
+              {thisSaturday() && (
+                <button
+                  type="button"
+                  onClick={() => setEventDatetime(formatDtAt9pm(thisSaturday()!))}
+                  className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
+                >
+                  📅 {new Date().getDay() === 6 ? "Tonight (Sat)" : "This Saturday"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setEventDatetime(formatDtAt9pm(nextFriday()))}
