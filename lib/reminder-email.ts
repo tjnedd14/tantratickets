@@ -108,12 +108,7 @@ export async function sendReminderEmail(params: SendBlastParams) {
                 <div style="font-family:'Courier New', monospace; font-size:22px; font-weight:bold; color:#fff; letter-spacing:3px;">
                   ${params.ticketCode}
                 </div>
-                ${params.qrDataUrl ? `
-                  <div style="margin: 16px auto 4px; background:#fff; padding: 10px; display: inline-block; line-height: 0;">
-                    <img src="cid:qrcode" alt="QR Code" width="200" height="200" style="display:block; width:200px; height:200px;" />
-                  </div>
-                ` : ""}
-                <div style="font-size:11px; color:#888; margin-top:10px;">${params.qrDataUrl ? "Scan this QR at the door" : "Show this at the door"}</div>
+                <div style="font-size:11px; color:#888; margin-top:10px;">Show this at the door</div>
               </td>
             </tr>
           </table>
@@ -234,27 +229,12 @@ export async function sendReminderEmail(params: SendBlastParams) {
 </html>
   `.trim();
 
-  // If a QR data URL is provided, attach it as an inline image with CID "qrcode"
-  // so it renders properly in Gmail/Outlook (those clients strip data URLs from <img src>)
-  const attachments: { filename: string; content: string; content_id?: string }[] = [];
-  if (params.qrDataUrl && params.qrDataUrl.startsWith("data:")) {
-    const base64Payload = params.qrDataUrl.split(",")[1];
-    if (base64Payload) {
-      attachments.push({
-        filename: "qrcode.png",
-        content: base64Payload,
-        cid: "qrcode",
-      });
-    }
-  }
-
   const result = await resend.emails.send({
     from: fromAddress,
     to: params.to,
     subject,
     html,
-    ...(attachments.length > 0 ? { attachments } : {}),
-  } as any);
+  });
 
   return result;
 }
