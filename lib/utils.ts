@@ -128,7 +128,7 @@ export function formatEventTime(iso: string | null | undefined): string {
 
 export function getDefaultEventDatetime(): string {
   const d = new Date();
-  d.setHours(23, 0, 0, 0);
+  d.setHours(21, 0, 0, 0);
   if (new Date() > d) {
     d.setDate(d.getDate() + 1);
   }
