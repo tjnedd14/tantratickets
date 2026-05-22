@@ -371,7 +371,7 @@ export default function AdminPage() {
           group_size: groupSize,
           notes: notes.trim() || null,
           table_number: tableNumber.trim() || null,
-          event_datetime: eventDatetime || null,
+          event_datetime: eventDatetime ? localToArubaIso(eventDatetime) : null,
           issued_by: issuedBy.trim() || null,
         }),
       });
@@ -1385,6 +1385,20 @@ function getDayName(dateString: string): string {
   return d.toLocaleDateString([], { weekday: "long" });
 }
 
+/**
+ * Convert a datetime-local string (no timezone) to ISO with Aruba offset (-04:00).
+ * Aruba has no DST so the offset is constant year-round.
+ * Input: "2026-05-16T21:00" (wall clock Aruba time)
+ * Output: "2026-05-16T21:00:00-04:00" (proper timestamptz value)
+ */
+function localToArubaIso(local: string): string {
+  if (!local) return "";
+  // datetime-local input is "YYYY-MM-DDTHH:MM" (16 chars). Add seconds + offset.
+  if (local.length === 16) return local + ":00-04:00";
+  if (local.length === 19) return local + "-04:00";
+  return local;
+}
+
 function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
   if (checkedIn) {
     const checkedDate = checkedInAt ? new Date(checkedInAt) : null;
@@ -1455,7 +1469,7 @@ function EditModal({ reservation, onClose, onSaved, password }: any) {
           table_number: tableNumber.trim() || null,
           notes: notes.trim() || null,
           issued_by: issuedBy.trim() || null,
-          event_datetime: eventDatetime || null,
+          event_datetime: eventDatetime ? localToArubaIso(eventDatetime) : null,
           send_email: sendEmail,
         }),
       });
@@ -2524,7 +2538,7 @@ function AutoPassTab({ password }: { password: string }) {
         body: JSON.stringify({
           openbar_ids: Array.from(effectiveSelectedOpenbar),
           reservation_ids: Array.from(effectiveSelectedReservations),
-          new_event_datetime: new Date(newEventDatetime).toISOString(),
+          new_event_datetime: localToArubaIso(newEventDatetime),
           subject: subject.trim(),
           message: message.trim() || undefined,
           image_urls: imageUrls.filter((u) => u.trim().length > 0),
@@ -2919,7 +2933,7 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
         headers: { "Content-Type": "application/json", "x-admin-password": password },
         body: JSON.stringify({
           guests,
-          event_datetime: new Date(eventDatetime).toISOString(),
+          event_datetime: localToArubaIso(eventDatetime),
         }),
       });
       const data = await res.json();
