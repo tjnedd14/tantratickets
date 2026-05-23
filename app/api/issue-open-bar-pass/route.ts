@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
-import { generateOpenBarCode } from "@/lib/utils";
+import { generateOpenBarCode, isoToArubaDateKey, arubaDayBoundsISO } from "@/lib/utils";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -63,18 +63,16 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Check if email already exists for this event date
-      const dayStart = new Date(eventDate);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(eventDate);
-      dayEnd.setHours(23, 59, 59, 999);
+      // Check if email already exists for this event date (Aruba calendar day)
+      const eventDateKey = isoToArubaDateKey(eventDate.toISOString());
+      const { startISO, endISO } = arubaDayBoundsISO(eventDateKey);
 
       const { data: existing } = await supabase
         .from("open_bar_signups")
         .select("id, ticket_code")
         .eq("email", email)
-        .gte("event_datetime", dayStart.toISOString())
-        .lte("event_datetime", dayEnd.toISOString())
+        .gte("event_datetime", startISO)
+        .lt("event_datetime", endISO)
         .maybeSingle();
 
       if (existing) {

@@ -7,12 +7,16 @@ import {
   normalizePhone,
   formatEventDate,
   getDefaultEventDatetime,
-  isoToDateKey,
+  isoToArubaDateKey,
   getTodayKey,
   getTomorrowKey,
   getTonightKey,
   formatDateKey,
-  toDatetimeLocal,
+  arubaIsoToLocal,
+  localToArubaIso,
+  arubaPartsFromDate,
+  nowInAruba,
+  arubaDateKeyAddDays,
 } from "@/lib/utils";
 import { useTheme } from "@/lib/theme";
 import AnalyticsPanel from "@/components/AnalyticsPanel";
@@ -121,6 +125,7 @@ export default function AdminPage() {
   const [editingReservation, setEditingReservation] = useState<Registration | null>(null);
   const [deletingReservation, setDeletingReservation] = useState<Registration | null>(null);
   const [deletingOpenBar, setDeletingOpenBar] = useState<OpenBarSignup | null>(null);
+  const [reassignOpen, setReassignOpen] = useState(false);
 
   useEffect(() => {
     if (!eventDatetime) setEventDatetime(getDefaultEventDatetime());
@@ -357,7 +362,7 @@ export default function AdminPage() {
     if (fullName.trim().length < 2) { setIssueError("Please enter the client's full name"); return; }
     if (!isValidEmail(email)) { setIssueError("Please enter a valid email address"); return; }
     if (!isValidPhone(phone)) { setIssueError("Please enter a valid phone number"); return; }
-    if (groupSize < 1 || groupSize > 50) { setIssueError("Party size must be between 1 and 50"); return; }
+    if (groupSize < 1 || groupSize > 100) { setIssueError("Party size must be between 1 and 100"); return; }
 
     setIssueLoading(true);
     try {
@@ -400,7 +405,7 @@ export default function AdminPage() {
     const dateSet = new Set<string>();
     for (const r of registrations) {
       if (r.event_datetime) {
-        const k = isoToDateKey(r.event_datetime);
+        const k = isoToArubaDateKey(r.event_datetime);
         if (k) dateSet.add(k);
       }
     }
@@ -408,10 +413,10 @@ export default function AdminPage() {
 
     let filtered = registrations;
     if (dateMode === "specific" && selectedDate) {
-      filtered = registrations.filter((r) => r.event_datetime && isoToDateKey(r.event_datetime) === selectedDate);
+      filtered = registrations.filter((r) => r.event_datetime && isoToArubaDateKey(r.event_datetime) === selectedDate);
     } else if (dateMode === "upcoming") {
       const today = getTodayKey();
-      filtered = registrations.filter((r) => r.event_datetime && isoToDateKey(r.event_datetime) >= today);
+      filtered = registrations.filter((r) => r.event_datetime && isoToArubaDateKey(r.event_datetime) >= today);
     }
     return { availableDates, dateFilteredRegs: filtered };
   }, [registrations, dateMode, selectedDate]);
@@ -580,6 +585,14 @@ export default function AdminPage() {
                   title="Bulk reset all reservation check-ins"
                 >
                   ↻ RESET CHECK-INS
+                </button>
+                <button
+                  onClick={() => setReassignOpen(true)}
+                  disabled={dateFilteredRegs.length === 0}
+                  className="px-5 py-3 text-xs font-bold tracking-widest border border-blue-400 text-blue-400 hover:bg-blue-400/10 transition disabled:opacity-50"
+                  title="Move reservations from the current filter to a different event night"
+                >
+                  ⇆ MOVE TO ANOTHER DATE
                 </button>
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -764,6 +777,14 @@ export default function AdminPage() {
           signup={deletingOpenBar}
           onClose={() => setDeletingOpenBar(null)}
           onDeleted={() => { setDeletingOpenBar(null); loadOpenBar(); }}
+          password={password}
+        />
+      )}
+      {reassignOpen && (
+        <ReassignDateModal
+          reservations={dateFilteredRegs}
+          onClose={() => setReassignOpen(false)}
+          onDone={() => { setReassignOpen(false); refreshList(); }}
           password={password}
         />
       )}
@@ -1286,117 +1307,81 @@ function ageOnNextBirthday(dob: string | null | undefined): number | null {
 }
 
 /**
- * Get the date of the next upcoming Friday or Saturday, whichever is closer.
- * If today IS already Fri/Sat (and it's before 9pm), returns today.
+ * Get the date key (Aruba time) of the next upcoming Friday or Saturday.
+ * If today IS already Fri/Sat in Aruba and it's before 9pm, returns today.
  */
-function nextFriOrSat(): Date {
-  const d = new Date();
-  const day = d.getDay(); // 0=Sun, 5=Fri, 6=Sat
-  const hour = d.getHours();
-  // If today is Fri or Sat and it's before 9pm, use today
-  if ((day === 5 || day === 6) && hour < 21) {
-    return d;
+function nextFriOrSatKey(): string {
+  const p = nowInAruba();
+  if ((p.wd === 5 || p.wd === 6) && p.h < 21) {
+    return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
   }
-  // Otherwise find the next Fri/Sat
-  let daysAhead = 1;
-  while (daysAhead <= 7) {
-    const candidate = new Date(d);
-    candidate.setDate(d.getDate() + daysAhead);
-    const cDay = candidate.getDay();
-    if (cDay === 5 || cDay === 6) return candidate;
-    daysAhead++;
+  let key = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+  let wd = p.wd;
+  for (let i = 0; i < 7; i++) {
+    wd = (wd + 1) % 7;
+    key = arubaDateKeyAddDays(key, 1);
+    if (wd === 5 || wd === 6) return key;
   }
-  return d; // fallback (won't hit)
+  return key;
 }
 
-/** Get next-occurring Friday from now (always returns a future Friday at 9pm). */
-function nextFriday(): Date {
-  const d = new Date();
-  const day = d.getDay();
-  const daysUntilFri = (5 - day + 7) % 7 || 7;
-  d.setDate(d.getDate() + daysUntilFri);
-  return d;
+/** Next-occurring Friday key in Aruba time. */
+function nextFridayKey(): string {
+  const p = nowInAruba();
+  const daysUntil = (5 - p.wd + 7) % 7 || 7;
+  return arubaDateKeyAddDays(`${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`, daysUntil);
 }
 
-/** Get next-occurring Saturday. */
-function nextSaturday(): Date {
-  const d = new Date();
-  const day = d.getDay();
-  const daysUntilSat = (6 - day + 7) % 7 || 7;
-  d.setDate(d.getDate() + daysUntilSat);
-  return d;
+/** Next-occurring Saturday key in Aruba time. */
+function nextSaturdayKey(): string {
+  const p = nowInAruba();
+  const daysUntil = (6 - p.wd + 7) % 7 || 7;
+  return arubaDateKeyAddDays(`${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`, daysUntil);
 }
 
-/**
- * Get "this Friday" — the Friday of this week.
- * Returns null if today is Sat or Sun (this Friday has already passed).
- */
-function thisFriday(): Date | null {
-  const d = new Date();
-  const day = d.getDay();
-  // Sun = 0, Mon = 1 ... Fri = 5, Sat = 6
-  if (day === 6 || day === 0) return null; // already past Friday this week
-  if (day === 5) return d; // today is Friday
-  // Mon-Thu: this Friday is 5 - day days away
-  const daysUntilFri = 5 - day;
-  d.setDate(d.getDate() + daysUntilFri);
-  return d;
+/** "This week's" Friday in Aruba — null if today is Sat/Sun (already past). */
+function thisFridayKey(): string | null {
+  const p = nowInAruba();
+  if (p.wd === 6 || p.wd === 0) return null;
+  if (p.wd === 5) return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+  const daysUntil = 5 - p.wd;
+  return arubaDateKeyAddDays(`${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`, daysUntil);
 }
 
-/**
- * Get "this Saturday" — the Saturday of this week.
- * Returns null if today is Sunday (this Saturday has already passed).
- */
-function thisSaturday(): Date | null {
-  const d = new Date();
-  const day = d.getDay();
-  if (day === 0) return null; // Sunday → this Saturday passed yesterday
-  if (day === 6) return d; // today is Saturday
-  // Mon-Fri: this Saturday is 6 - day days away
-  const daysUntilSat = 6 - day;
-  d.setDate(d.getDate() + daysUntilSat);
-  return d;
+/** "This week's" Saturday in Aruba — null if today is Sunday. */
+function thisSaturdayKey(): string | null {
+  const p = nowInAruba();
+  if (p.wd === 0) return null;
+  if (p.wd === 6) return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+  const daysUntil = 6 - p.wd;
+  return arubaDateKeyAddDays(`${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`, daysUntil);
 }
 
-/** Format a Date as YYYY-MM-DDTHH:MM at 9:00 PM. */
-function formatDtAt9pm(d: Date): string {
-  const date = new Date(d);
-  date.setHours(21, 0, 0, 0);
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T21:00`;
+/** Build a "YYYY-MM-DDT21:00" string from a YYYY-MM-DD key (9pm Aruba). */
+function keyAt9pm(key: string): string {
+  return `${key}T21:00`;
 }
 
-/** True if date is Fri or Sat. */
+/** True if a "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" string is a Fri or Sat in Aruba. */
 function isFriOrSat(dateString: string): boolean {
   if (!dateString) return false;
-  const d = new Date(dateString);
+  const key = dateString.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return false;
+  // Anchor to noon Aruba so we never cross a day boundary in any host TZ
+  const d = new Date(`${key}T12:00:00-04:00`);
   if (isNaN(d.getTime())) return false;
-  const day = d.getDay();
-  return day === 5 || day === 6;
+  const p = arubaPartsFromDate(d);
+  return p.wd === 5 || p.wd === 6;
 }
 
-/** Get day name. */
+/** Day-of-week name from a "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM" string (Aruba calendar). */
 function getDayName(dateString: string): string {
   if (!dateString) return "";
-  const d = new Date(dateString);
+  const key = dateString.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return "";
+  const d = new Date(`${key}T12:00:00-04:00`);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString([], { weekday: "long" });
-}
-
-/**
- * Convert a datetime-local string (no timezone) to ISO with Aruba offset (-04:00).
- * Aruba has no DST so the offset is constant year-round.
- * Input: "2026-05-16T21:00" (wall clock Aruba time)
- * Output: "2026-05-16T21:00:00-04:00" (proper timestamptz value)
- */
-function localToArubaIso(local: string): string {
-  if (!local) return "";
-  // datetime-local input is "YYYY-MM-DDTHH:MM" (16 chars). Add seconds + offset.
-  if (local.length === 16) return local + ":00-04:00";
-  if (local.length === 19) return local + "-04:00";
-  return local;
+  return d.toLocaleDateString("en-US", { weekday: "long", timeZone: "America/Aruba" });
 }
 
 function CheckInButton({ checkedIn, loading, checkedInAt, onClick }: { checkedIn: boolean; loading: boolean; checkedInAt: string | null; onClick: () => void }) {
@@ -1441,7 +1426,7 @@ function EditModal({ reservation, onClose, onSaved, password }: any) {
   const [notes, setNotes] = useState(reservation.notes || "");
   const [issuedBy, setIssuedBy] = useState(reservation.issued_by || "");
   const [eventDatetime, setEventDatetime] = useState(
-    reservation.event_datetime ? toDatetimeLocal(new Date(reservation.event_datetime)) : ""
+    reservation.event_datetime ? arubaIsoToLocal(reservation.event_datetime) : ""
   );
   const [sendEmail, setSendEmail] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1453,7 +1438,7 @@ function EditModal({ reservation, onClose, onSaved, password }: any) {
     if (fullName.trim().length < 2) { setError("Invalid client name"); return; }
     if (!isValidEmail(email)) { setError("Invalid email"); return; }
     if (!isValidPhone(phone)) { setError("Invalid phone"); return; }
-    if (groupSize < 1 || groupSize > 50) { setError("Party size must be 1-50"); return; }
+    if (groupSize < 1 || groupSize > 100) { setError("Party size must be 1-100"); return; }
 
     setSaving(true);
     try {
@@ -1512,7 +1497,7 @@ function EditModal({ reservation, onClose, onSaved, password }: any) {
               <div className="display-text text-3xl text-tantra-red leading-none">{groupSize}</div>
               <div className="label mt-1">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
             </div>
-            <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
+            <button type="button" onClick={() => setGroupSize(Math.min(100, groupSize + 1))} className="w-10 h-10 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-lg font-bold">+</button>
           </div>
         </div>
         <div><label className="label block mb-2">TABLE</label>
@@ -1592,6 +1577,271 @@ function DeleteReservationModal({ reservation, onClose, onDeleted, password }: a
           <button onClick={onClose} className="btn-outline flex-1 py-3 text-xs" disabled={deleting}>Cancel</button>
           <button onClick={handleDelete} disabled={deleting || !confirmPassword} className="flex-1 py-3 text-xs bg-tantra-red text-white font-bold uppercase tracking-widest border border-tantra-red hover:bg-red-700 transition disabled:opacity-50">
             {deleting ? "Deleting..." : "Delete Forever"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ============================================================
+// Bulk re-assign event date
+//
+// Used to recover from the May 2026 date-clustering bug (and any future
+// "everyone got tagged for the wrong night" situation). Operates on the
+// reservations currently visible in the list (i.e. whatever's passed
+// in via the `reservations` prop, which is `dateFilteredRegs`).
+// ============================================================
+function ReassignDateModal({
+  reservations,
+  onClose,
+  onDone,
+  password,
+}: {
+  reservations: Registration[];
+  onClose: () => void;
+  onDone: () => void;
+  password: string;
+}) {
+  // Default the target to next Fri/Sat at 9pm Aruba
+  const [newEventDatetime, setNewEventDatetime] = useState(() => keyAt9pm(nextFriOrSatKey()));
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(
+    () => new Set(reservations.map((r) => r.id))
+  );
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ updated: number } | null>(null);
+
+  function toggle(id: string) {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  }
+
+  function toggleAll() {
+    if (selectedIds.size === reservations.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(reservations.map((r) => r.id)));
+    }
+  }
+
+  async function handleSubmit() {
+    setError("");
+    if (selectedIds.size === 0) {
+      setError("Pick at least one reservation to move");
+      return;
+    }
+    if (!newEventDatetime) {
+      setError("Pick a new event date and time");
+      return;
+    }
+    if (!confirmPassword) {
+      setError("Re-enter your admin password to confirm");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/reassign-event-date", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-password": password },
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+          new_event_datetime: localToArubaIso(newEventDatetime),
+          confirm_password: confirmPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Move failed");
+      setResult({ updated: data.updated });
+    } catch (err: any) {
+      setError(err.message || "Move failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (result) {
+    return (
+      <Modal onClose={onClose}>
+        <div className="space-y-5">
+          <h2 className="display-text text-2xl text-default">✓ Moved</h2>
+          <div className="bg-green-500/10 border border-green-500 px-4 py-4">
+            <div className="display-text text-2xl text-green-500 mb-1">{result.updated} reservation(s) moved</div>
+            <div className="text-sm text-muted">
+              New event date:{" "}
+              <span className="text-default font-semibold">
+                {formatEventDate(localToArubaIso(newEventDatetime))}
+              </span>
+            </div>
+          </div>
+          <button onClick={onDone} className="btn-red w-full py-3 text-xs">DONE</button>
+        </div>
+      </Modal>
+    );
+  }
+
+  const allSelected = selectedIds.size === reservations.length && reservations.length > 0;
+  const totalGuests = reservations
+    .filter((r) => selectedIds.has(r.id))
+    .reduce((sum, r) => sum + (r.group_size || 0), 0);
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="space-y-5">
+        <h2 className="display-text text-2xl text-default">Move reservations to another date</h2>
+        <div className="bg-blue-400/5 border border-blue-400/40 px-4 py-3 text-xs text-default">
+          <div className="font-bold text-blue-400 mb-1">⚠ Why this exists</div>
+          <div className="text-muted leading-relaxed">
+            If a batch of reservations was tagged with the wrong event night (e.g.
+            everything ended up on today's date because of the old default-date bug),
+            select the ones you want to move and pick the actual night they were
+            booked for. This rewrites <code className="text-default">event_datetime</code>{" "}
+            for each one. Tickets, guest names, table assignments and check-in status
+            stay exactly as they are.
+          </div>
+        </div>
+
+        <div>
+          <label className="label mb-2 block">NEW EVENT DATE & TIME (Aruba)</label>
+          <input
+            type="datetime-local"
+            value={newEventDatetime}
+            onChange={(e) => setNewEventDatetime(e.target.value)}
+            className="tantra-input w-full px-4 py-3 text-default"
+          />
+          {newEventDatetime && (
+            <div className="text-xs text-muted mt-2">
+              Will be saved as{" "}
+              <span className="text-default font-semibold">
+                {formatEventDate(localToArubaIso(newEventDatetime))}
+              </span>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2 mt-3">
+            {thisFridayKey() && (
+              <button
+                type="button"
+                onClick={() => setNewEventDatetime(keyAt9pm(thisFridayKey()!))}
+                className="px-3 py-1.5 text-xs border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+              >
+                This Fri 9pm
+              </button>
+            )}
+            {thisSaturdayKey() && (
+              <button
+                type="button"
+                onClick={() => setNewEventDatetime(keyAt9pm(thisSaturdayKey()!))}
+                className="px-3 py-1.5 text-xs border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+              >
+                This Sat 9pm
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setNewEventDatetime(keyAt9pm(nextFridayKey()))}
+              className="px-3 py-1.5 text-xs border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+            >
+              Next Fri 9pm
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewEventDatetime(keyAt9pm(nextSaturdayKey()))}
+              className="px-3 py-1.5 text-xs border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
+            >
+              Next Sat 9pm
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="label">
+              RESERVATIONS TO MOVE ({selectedIds.size} of {reservations.length} · {totalGuests} guests)
+            </label>
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="text-xs text-tantra-red hover:underline"
+            >
+              {allSelected ? "Deselect all" : "Select all"}
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto border border-[var(--border)] bg-deep">
+            {reservations.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted">
+                No reservations in the current filter.
+              </div>
+            ) : (
+              reservations.map((r) => (
+                <label
+                  key={r.id}
+                  className="flex items-center gap-3 px-3 py-2 border-b border-[var(--border)] last:border-b-0 hover:bg-card cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(r.id)}
+                    onChange={() => toggle(r.id)}
+                    className="w-4 h-4 accent-tantra-red flex-shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-default font-semibold truncate">
+                      {r.is_vip && <span className="text-yellow-500 mr-1">⭐</span>}
+                      {r.full_name}{" "}
+                      <span className="text-muted font-normal">
+                        · {r.group_size} {r.group_size === 1 ? "guest" : "guests"}
+                      </span>
+                      {r.table_number && (
+                        <span className="text-tantra-red font-bold ml-2">
+                          {r.table_number.startsWith("T3B") ? "T3" : r.table_number}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted">
+                      currently:{" "}
+                      {r.event_datetime ? formatEventDate(r.event_datetime) : "no date"}
+                    </div>
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="label mb-2 block">CONFIRM YOUR ADMIN PASSWORD</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Re-enter password to confirm"
+            className="tantra-input w-full px-4 py-3"
+            autoComplete="off"
+          />
+        </div>
+
+        {error && (
+          <div className="bg-tantra-red/10 border border-tantra-red text-tantra-red text-sm px-3 py-2">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="btn-outline flex-1 py-3 text-xs"
+          >
+            CANCEL
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || selectedIds.size === 0}
+            className="btn-red flex-1 py-3 text-xs"
+          >
+            {submitting ? "MOVING..." : `MOVE ${selectedIds.size} RESERVATION${selectedIds.size === 1 ? "" : "S"}`}
           </button>
         </div>
       </div>
@@ -1694,7 +1944,7 @@ function IssueTab(props: any) {
     for (const r of (registrations || [])) {
       if (!r.table_number || !r.table_number.trim()) continue;
       if (!r.event_datetime) continue;
-      const regDateKey = new Date(r.event_datetime).toISOString().slice(0, 10);
+      const regDateKey = isoToArubaDateKey(r.event_datetime);
       if (regDateKey !== selectedDateKey) continue;
       // table_number can contain a single table ("V2") or joined ("V2+V3")
       const tableIds = r.table_number
@@ -1835,7 +2085,7 @@ function IssueTab(props: any) {
                     <div className="display-text text-5xl text-tantra-red leading-none">{groupSize}</div>
                     <div className="label mt-2">{groupSize === 1 ? "GUEST" : "GUESTS"}</div>
                   </div>
-                  <button type="button" onClick={() => setGroupSize(Math.min(50, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
+                  <button type="button" onClick={() => setGroupSize(Math.min(100, groupSize + 1))} className="w-12 h-12 bg-surface tantra-border text-default hover:border-tantra-red hover:text-tantra-red transition text-xl font-bold">+</button>
                 </div>
               </div>
               <div><label className="label block mb-2">NOTES <span className="normal-case tracking-normal text-subtle">(birthdays, special requests)</span></label>
@@ -2436,7 +2686,7 @@ function AutoPassTab({ password }: { password: string }) {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [vipFilter, setVipFilter] = useState(false);
 
-  const [newEventDatetime, setNewEventDatetime] = useState<string>(() => formatDtAt9pm(nextFriOrSat()));
+  const [newEventDatetime, setNewEventDatetime] = useState<string>(() => keyAt9pm(nextFriOrSatKey()));
 
   const [subject, setSubject] = useState("🎉 You're invited back — your VIP pass is ready");
   const [message, setMessage] = useState("Great news — we have another Open Bar event coming up and you're invited back. Your new pass is below. Just show up at the door, no need to sign up again. See you there!");
@@ -2596,19 +2846,19 @@ function AutoPassTab({ password }: { password: string }) {
           )}
           {/* Quick-pick chips */}
           <div className="mt-3 flex flex-wrap gap-2">
-            {thisFriday() && (
+            {thisFridayKey() && (
               <button
                 type="button"
-                onClick={() => setNewEventDatetime(formatDtAt9pm(thisFriday()!))}
+                onClick={() => setNewEventDatetime(keyAt9pm(thisFridayKey()!))}
                 className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
               >
                 📅 {new Date().getDay() === 5 ? "Tonight (Fri)" : "This Friday"}
               </button>
             )}
-            {thisSaturday() && (
+            {thisSaturdayKey() && (
               <button
                 type="button"
-                onClick={() => setNewEventDatetime(formatDtAt9pm(thisSaturday()!))}
+                onClick={() => setNewEventDatetime(keyAt9pm(thisSaturdayKey()!))}
                 className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
               >
                 📅 {new Date().getDay() === 6 ? "Tonight (Sat)" : "This Saturday"}
@@ -2616,14 +2866,14 @@ function AutoPassTab({ password }: { password: string }) {
             )}
             <button
               type="button"
-              onClick={() => setNewEventDatetime(formatDtAt9pm(nextFriday()))}
+              onClick={() => setNewEventDatetime(keyAt9pm(nextFridayKey()))}
               className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
             >
               📅 Next Friday
             </button>
             <button
               type="button"
-              onClick={() => setNewEventDatetime(formatDtAt9pm(nextSaturday()))}
+              onClick={() => setNewEventDatetime(keyAt9pm(nextSaturdayKey()))}
               className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
             >
               📅 Next Saturday
@@ -2866,7 +3116,7 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
   // Bulk mode
   const [bulkText, setBulkText] = useState("");
 
-  const [eventDatetime, setEventDatetime] = useState<string>(() => formatDtAt9pm(nextFriOrSat()));
+  const [eventDatetime, setEventDatetime] = useState<string>(() => keyAt9pm(nextFriOrSatKey()));
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -3017,19 +3267,19 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
               </div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
-              {thisFriday() && (
+              {thisFridayKey() && (
                 <button
                   type="button"
-                  onClick={() => setEventDatetime(formatDtAt9pm(thisFriday()!))}
+                  onClick={() => setEventDatetime(keyAt9pm(thisFridayKey()!))}
                   className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
                 >
                   📅 {new Date().getDay() === 5 ? "Tonight (Fri)" : "This Friday"}
                 </button>
               )}
-              {thisSaturday() && (
+              {thisSaturdayKey() && (
                 <button
                   type="button"
-                  onClick={() => setEventDatetime(formatDtAt9pm(thisSaturday()!))}
+                  onClick={() => setEventDatetime(keyAt9pm(thisSaturdayKey()!))}
                   className="px-3 py-1.5 text-xs font-bold tracking-wider border border-tantra-red text-tantra-red hover:bg-tantra-red hover:text-white transition"
                 >
                   📅 {new Date().getDay() === 6 ? "Tonight (Sat)" : "This Saturday"}
@@ -3037,14 +3287,14 @@ function IssuePassTab({ password, onCreated }: { password: string; onCreated: ()
               )}
               <button
                 type="button"
-                onClick={() => setEventDatetime(formatDtAt9pm(nextFriday()))}
+                onClick={() => setEventDatetime(keyAt9pm(nextFridayKey()))}
                 className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
               >
                 📅 Next Friday
               </button>
               <button
                 type="button"
-                onClick={() => setEventDatetime(formatDtAt9pm(nextSaturday()))}
+                onClick={() => setEventDatetime(keyAt9pm(nextSaturdayKey()))}
                 className="px-3 py-1.5 text-xs font-bold tracking-wider border border-[var(--border)] text-default hover:border-tantra-red hover:text-tantra-red transition"
               >
                 📅 Next Saturday

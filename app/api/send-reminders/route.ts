@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
 import { sendReminderEmail } from "@/lib/reminder-email";
+import { getTodayKey, arubaDayBoundsISO } from "@/lib/utils";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -65,13 +66,13 @@ export async function POST(req: NextRequest) {
 
     // Duplicate-send check only applies for reminder mode (when an event_date is set)
     if (useDateForLog && !isPromoMode) {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+      // "Today" in Aruba calendar — find logs created since today's Aruba midnight
+      const { startISO } = arubaDayBoundsISO(getTodayKey());
       const { data: recentLogs } = await supabase
         .from("reminder_logs")
         .select("id, audience, total_sent, created_at")
         .eq("event_date", event_date)
-        .gte("created_at", todayStart.toISOString());
+        .gte("created_at", startISO);
 
       if (recentLogs && recentLogs.length > 0 && !confirm_double_send) {
         return NextResponse.json(
@@ -175,8 +176,8 @@ export async function POST(req: NextRequest) {
       await new Promise((res) => setTimeout(res, 600));
     }
 
-    // Log — use event_date if available, otherwise today's date for record keeping
-    const logDate = useDateForLog ? event_date : new Date().toISOString().slice(0, 10);
+    // Log — use event_date if available, otherwise today's Aruba date for record keeping
+    const logDate = useDateForLog ? event_date : getTodayKey();
     await supabase.from("reminder_logs").insert({
       audience,
       event_date: logDate,

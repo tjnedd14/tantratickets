@@ -3,7 +3,7 @@ import { getAdminClient } from "@/lib/supabase";
 import { sendReminderEmail } from "@/lib/reminder-email";
 import { sendOpenBarPassEmail } from "@/lib/open-bar-email";
 import { buildOpenBarPassPDF } from "@/lib/open-bar-pdf";
-import { generateOpenBarCode } from "@/lib/utils";
+import { generateOpenBarCode, isoToArubaDateKey } from "@/lib/utils";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
     // Log
     await supabase.from("reminder_logs").insert({
       audience: openBarIds.length > 0 && reservationIds.length > 0 ? "both" : openBarIds.length > 0 ? "openbar" : "reservations",
-      event_date: eventDate.toISOString().slice(0, 10),
+      event_date: isoToArubaDateKey(eventDate.toISOString()),
       total_recipients: recipients.length,
       total_sent: sent,
       total_failed: failed,

@@ -9,7 +9,6 @@ import {
 } from "@/lib/utils";
 import { buildOpenBarPassPDF } from "@/lib/open-bar-pdf";
 import { sendOpenBarPassEmail } from "@/lib/open-bar-email";
-// import { sendWhatsAppConfirmation } from "@/lib/whatsapp"; // WhatsApp: activate when Meta approval complete
 
 // No admin auth — this endpoint is public
 export async function POST(req: NextRequest) {
@@ -198,23 +197,9 @@ export async function POST(req: NextRequest) {
       emailError = err.message || "Email failed to send";
     }
 
-    // WhatsApp: activate when Meta approval complete
-    // if (waOptIn) {
-    //   try {
-    //     await sendWhatsAppConfirmation({
-    //       to: cleanPhone,
-    //       fullName: cleanName,
-    //       ticketCode,
-    //       eventDatetime: eventDateISO,
-    //     });
-    //     await supabase
-    //       .from("open_bar_signups")
-    //       .update({ wa_sent: true, wa_sent_at: new Date().toISOString() })
-    //       .eq("id", signup.id);
-    //   } catch (err) {
-    //     console.error("WhatsApp send error:", err);
-    //   }
-    // }
+    // WhatsApp confirmation is wired separately via /api/whatsapp/broadcast
+    // when the Meta-approved template is ready. wa_opt_in is captured here
+    // so future blasts know who consented.
 
     return NextResponse.json({
       success: true,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
+import { arubaDayBoundsISO } from "@/lib/utils";
 
 function checkAuth(req: NextRequest): boolean {
   const pw = req.headers.get("x-admin-password");
@@ -32,11 +33,10 @@ export async function POST(req: NextRequest) {
       .order("full_name", { ascending: true });
 
     if (useDateFilter) {
-      const dayStart = new Date(`${event_date}T00:00:00`);
-      const dayEnd = new Date(`${event_date}T23:59:59.999`);
+      const { startISO, endISO } = arubaDayBoundsISO(event_date);
       openBarQuery = openBarQuery
-        .gte("event_datetime", dayStart.toISOString())
-        .lte("event_datetime", dayEnd.toISOString())
+        .gte("event_datetime", startISO)
+        .lt("event_datetime", endISO)
         .eq("checked_in", false);
     }
 
@@ -64,11 +64,10 @@ export async function POST(req: NextRequest) {
       .order("full_name", { ascending: true });
 
     if (useDateFilter) {
-      const dayStart = new Date(`${event_date}T00:00:00`);
-      const dayEnd = new Date(`${event_date}T23:59:59.999`);
+      const { startISO, endISO } = arubaDayBoundsISO(event_date);
       regsQuery = regsQuery
-        .gte("event_datetime", dayStart.toISOString())
-        .lte("event_datetime", dayEnd.toISOString());
+        .gte("event_datetime", startISO)
+        .lt("event_datetime", endISO);
     }
 
     const { data: regs } = await regsQuery;

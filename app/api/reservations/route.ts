@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest) {
     }
     if (!Number.isInteger(group_size) || group_size < 1 || group_size > 100) {
       return NextResponse.json(
-        { error: "Party size must be between 1 and 50" },
+        { error: "Party size must be between 1 and 100" },
         { status: 400 }
       );
     }

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase";
 import { sendWhatsAppReminder } from "@/lib/whatsapp";
+import { getTodayKey, arubaDayBoundsISO } from "@/lib/utils";
 
 /**
  * GET /api/whatsapp/reminder
  *
- * Sends a "tonight's the night" WhatsApp reminder to everyone with a pass for today.
+ * Sends a "tonight's the night" WhatsApp reminder to everyone with a pass for today (Aruba time).
  *
  * Scheduled via Vercel Cron (vercel.json) to run Fri + Sat at 3pm local time.
  *
@@ -30,19 +31,15 @@ export async function GET(req: NextRequest) {
 
   const supabase = getAdminClient();
 
-  // Find signups whose event_datetime is today (in Aruba local time).
-  const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
-  const endOfDay = new Date(now);
-  endOfDay.setHours(23, 59, 59, 999);
+  // Find signups whose event_datetime falls within today (Aruba calendar day).
+  const { startISO, endISO } = arubaDayBoundsISO(getTodayKey());
 
   const { data: signups, error } = await supabase
     .from("open_bar_signups")
     .select("id, full_name, phone, ticket_code, wa_opt_in, event_datetime, checked_in")
     .eq("wa_opt_in", true)
-    .gte("event_datetime", startOfDay.toISOString())
-    .lte("event_datetime", endOfDay.toISOString())
+    .gte("event_datetime", startISO)
+    .lt("event_datetime", endISO)
     .eq("checked_in", false); // don't remind people who already showed up
 
   if (error) {
