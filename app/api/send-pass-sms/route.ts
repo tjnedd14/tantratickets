@@ -60,12 +60,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Mark sms_sent (column may not exist yet — ignore errors silently so the send still counts)
-    await supabase
-      .from("open_bar_signups")
-      .update({ sms_sent: true, sms_sent_at: new Date().toISOString() })
-      .eq("id", signup_id)
-      .then(() => {})
-      .catch(() => {});
+    try {
+      await supabase
+        .from("open_bar_signups")
+        .update({ sms_sent: true, sms_sent_at: new Date().toISOString() })
+        .eq("id", signup_id);
+    } catch {
+      /* ignore — SMS already sent successfully */
+    }
 
     return NextResponse.json({
       ok: true,
